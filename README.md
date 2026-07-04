@@ -107,6 +107,9 @@ plaintext tokens to a shared or public repo.
   detects one.
 - Access tokens expire, but the refresh token is restored too, so Claude Code
   re-refreshes automatically after a switch.
+- OAuth refresh tokens rotate on every use. To keep snapshots valid, `ccswitch`
+  re-captures the outgoing account into its matching profile automatically on
+  every switch — so an account you actively use won't go stale.
 
 ## License
 

@@ -141,6 +141,37 @@ function __ccswitch_add -d "log in a new account and save it as a profile"
     __ccswitch_save "$home" "$config" "$name"
 end
 
+function __ccswitch_sync_current -d "re-snapshot the live account into its matching profile"
+    # OAuth refresh tokens rotate on every use, so a profile saved earlier goes
+    # stale as its account keeps running. Before switching away, copy the live
+    # credential + identity back into whichever profile matches the active
+    # account, so its snapshot stays valid.
+    set -l home $argv[1]
+    set -l config $argv[2]
+
+    test -f "$config"; or return 0
+    set -l cur_key (jq -r '(.oauthAccount.accountUuid // "") + "|" + (.oauthAccount.organizationUuid // "")' "$config")
+    test "$cur_key" = "|"; and return 0
+
+    set -l blob (__ccswitch_cred_read | string collect)
+    test -z "$blob"; and return 0
+
+    test -d "$home"; or return 0
+    for dir in "$home"/*/
+        test -f "$dir/account.json"; or continue
+        set -l key (jq -r '(.oauthAccount.accountUuid // "") + "|" + (.oauthAccount.organizationUuid // "")' "$dir/account.json")
+        test "$key" = "$cur_key"; or continue
+        printf '%s' "$blob" >"$dir/credentials.json"
+        chmod 600 "$dir/credentials.json"
+        set -l acct ""
+        test (uname) = Darwin; and set acct (__ccswitch_cred_acct)
+        jq --arg acct "$acct" '{oauthAccount, userID, keychain_account: $acct}' "$config" >"$dir/account.json"
+        chmod 600 "$dir/account.json"
+        return 0
+    end
+    return 0
+end
+
 function __ccswitch_use -d "restore a profile as the active account"
     set -l home $argv[1]
     set -l config $argv[2]
@@ -167,6 +198,9 @@ function __ccswitch_use -d "restore a profile as the active account"
     if command -sq pgrep; and pgrep -x claude >/dev/null 2>&1
         echo "ccswitch: warning — a running 'claude' may overwrite ~/.claude.json on exit; quit it first" >&2
     end
+
+    # refresh the outgoing account's snapshot (its token may have rotated)
+    __ccswitch_sync_current "$home" "$config"
 
     # restore the credential into the platform store
     set -l blob (cat "$dir/credentials.json" | string collect)
