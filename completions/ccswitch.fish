@@ -14,6 +14,7 @@ end
 complete -c ccswitch -f
 
 # subcommands and bare profile names (first token only)
+complete -c ccswitch -n __fish_use_subcommand -a add -d "log in a new account and save it"
 complete -c ccswitch -n __fish_use_subcommand -a save -d "save current account"
 complete -c ccswitch -n __fish_use_subcommand -a use -d "switch without launching"
 complete -c ccswitch -n __fish_use_subcommand -a list -d "list profiles"

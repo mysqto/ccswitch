@@ -43,6 +43,7 @@ Requires [`jq`](https://jqlang.github.io/jq/).
 | --- | --- |
 | `ccswitch <name> [args...]` | Switch to `<name>`, then start `claude` (extra args passed through) |
 | `ccswitch use <name>` | Switch without launching |
+| `ccswitch add <name>` | Sign in to a new account (`claude auth login`) and save it as `<name>` |
 | `ccswitch save <name>` | Save the current account as `<name>` |
 | `ccswitch list` / `ls` | List profiles (`*` marks the active one) |
 | `ccswitch current` / `whoami` | Show the active account |

@@ -6,6 +6,8 @@ function ccswitch -d "switch between multiple Claude Code accounts"
     switch "$cmd"
         case save
             __ccswitch_save "$home" "$config" $argv[2]
+        case add
+            __ccswitch_add "$home" "$config" $argv[2]
         case list ls
             __ccswitch_list "$home" "$config"
         case current whoami
@@ -79,7 +81,7 @@ function __ccswitch_save -d "snapshot the current account into a profile"
         echo "usage: ccswitch save <name>" >&2
         return 1
     end
-    if contains -- "$name" save list ls current whoami use rm remove delete help
+    if contains -- "$name" save add list ls current whoami use rm remove delete help
         echo "ccswitch: '$name' is a reserved word, pick another profile name" >&2
         return 1
     end
@@ -108,6 +110,35 @@ function __ccswitch_save -d "snapshot the current account into a profile"
 
     set -l email (jq -r '.oauthAccount.emailAddress // "unknown"' "$dir/account.json")
     echo "saved profile '$name' ($email)"
+end
+
+function __ccswitch_add -d "log in a new account and save it as a profile"
+    set -l home $argv[1]
+    set -l config $argv[2]
+    set -l name $argv[3]
+
+    if test -z "$name"
+        echo "usage: ccswitch add <name>" >&2
+        return 1
+    end
+    if contains -- "$name" save add list ls current whoami use rm remove delete help
+        echo "ccswitch: '$name' is a reserved word, pick another profile name" >&2
+        return 1
+    end
+    if test -d "$home/$name"
+        echo "ccswitch: profile '$name' already exists (ccswitch rm $name to replace it)" >&2
+        return 1
+    end
+
+    # note: no `claude auth logout` here — logout may revoke the token
+    # server-side, which would invalidate an already-saved profile. `login`
+    # simply replaces the active credential slot, which is all we need.
+    echo "signing in as '$name' (a browser window will open)..."
+    if not command claude auth login
+        echo "ccswitch: login did not complete — nothing saved" >&2
+        return 1
+    end
+    __ccswitch_save "$home" "$config" "$name"
 end
 
 function __ccswitch_use -d "restore a profile as the active account"
@@ -230,6 +261,7 @@ function __ccswitch_help -d "show ccswitch usage"
     echo "usage:"
     echo "  ccswitch <name> [args...]  switch to <name> and start a claude session"
     echo "  ccswitch use <name>        switch to <name> without launching claude"
+    echo "  ccswitch add <name>        sign in to a new account and save it as <name>"
     echo "  ccswitch save <name>       save the current account as <name>"
     echo "  ccswitch list | ls         list saved profiles (* marks the active one)"
     echo "  ccswitch current | whoami  show the active account"
