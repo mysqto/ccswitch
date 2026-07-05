@@ -113,6 +113,17 @@ Layout (centralized under `~/.claude`, override with `$CCSWITCH_ISOLATE_HOME`):
 `ccswitch isolate` with no name lists existing isolated profiles. Existing
 non-symlink files in a profile dir are left untouched (never clobbered).
 
+`shared/` starts **empty** — isolated profiles begin with fresh memory. To carry
+your existing memory/history over, seed it once from your default `~/.claude`:
+
+```fish
+ccswitch seed            # copies CLAUDE.md, history.jsonl and projects/ from ~/.claude
+ccswitch seed <dir>      # ... or from another config dir
+```
+
+Re-run `ccswitch seed` anytime to re-sync from the source (source wins on
+same-named files).
+
 > Note: this pattern relies on `CLAUDE_CONFIG_DIR` (supported) plus symlinking of
 > account-agnostic paths (a community pattern, not officially documented). Auth
 > stays isolated; only memory/history is shared. Two sessions writing the same

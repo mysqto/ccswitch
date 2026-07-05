@@ -10,6 +10,8 @@ function ccswitch -d "switch between multiple Claude Code accounts"
             __ccswitch_add "$home" "$config" $argv[2]
         case isolate iso
             __ccswitch_isolate $argv[2..-1]
+        case seed
+            __ccswitch_seed $argv[2..-1]
         case list ls
             __ccswitch_list "$home" "$config"
         case current whoami
@@ -83,7 +85,7 @@ function __ccswitch_save -d "snapshot the current account into a profile"
         echo "usage: ccswitch save <name>" >&2
         return 1
     end
-    if contains -- "$name" save add isolate iso shared list ls current whoami use rm remove delete help
+    if contains -- "$name" save add isolate iso seed shared list ls current whoami use rm remove delete help
         echo "ccswitch: '$name' is a reserved word, pick another profile name" >&2
         return 1
     end
@@ -123,7 +125,7 @@ function __ccswitch_add -d "log in a new account and save it as a profile"
         echo "usage: ccswitch add <name>" >&2
         return 1
     end
-    if contains -- "$name" save add isolate iso shared list ls current whoami use rm remove delete help
+    if contains -- "$name" save add isolate iso seed shared list ls current whoami use rm remove delete help
         echo "ccswitch: '$name' is a reserved word, pick another profile name" >&2
         return 1
     end
@@ -332,7 +334,7 @@ function __ccswitch_isolate -d "launch a concurrent session isolated to a profil
         echo "usage: ccswitch isolate <name> [claude args...]"
         return 0
     end
-    if contains -- "$name" shared save add isolate iso list ls current whoami use rm remove delete help
+    if contains -- "$name" shared save add isolate iso seed list ls current whoami use rm remove delete help
         echo "ccswitch: '$name' is a reserved word, pick another profile name" >&2
         return 1
     end
@@ -352,6 +354,42 @@ function __ccswitch_isolate -d "launch a concurrent session isolated to a profil
     env CLAUDE_CONFIG_DIR="$dir" claude $argv[2..-1]
 end
 
+function __ccswitch_seed -d "sync the shared isolate memory/history from ~/.claude (or a given dir)"
+    set -l base (__ccswitch_isolate_home)
+    set -l shared "$base/shared"
+    set -l src $argv[1]
+    test -z "$src"; and set src "$HOME/.claude"
+
+    if not test -d "$src"
+        echo "ccswitch: source '$src' not found" >&2
+        return 1
+    end
+
+    echo "seeding shared memory in $shared from $src ..."
+    mkdir -p "$shared/projects"
+    set -l did 0
+    if test -f "$src/CLAUDE.md"
+        cp "$src/CLAUDE.md" "$shared/CLAUDE.md"
+        set did 1
+        echo "  CLAUDE.md"
+    end
+    if test -f "$src/history.jsonl"
+        cp "$src/history.jsonl" "$shared/history.jsonl"
+        set did 1
+        echo "  history.jsonl"
+    end
+    if test -d "$src/projects"
+        cp -R "$src/projects/." "$shared/projects/"
+        set did 1
+        echo "  projects/ (transcripts + memory)"
+    end
+    if test $did -eq 0
+        echo "  nothing to seed from $src"
+        return 0
+    end
+    echo "done — isolate profiles now share this memory/history"
+end
+
 function __ccswitch_help -d "show ccswitch usage"
     echo "ccswitch — switch between multiple Claude Code accounts"
     echo
@@ -362,6 +400,8 @@ function __ccswitch_help -d "show ccswitch usage"
     echo "  ccswitch save <name>       save the current account as <name>"
     echo "  ccswitch isolate <name>    run a concurrent session isolated to <name>,"
     echo "                             with memory/history shared across profiles"
+    echo "  ccswitch seed [dir]        copy CLAUDE.md/history/projects from ~/.claude"
+    echo "                             (or [dir]) into the shared isolate memory"
     echo "  ccswitch list | ls         list saved profiles (* marks the active one)"
     echo "  ccswitch current | whoami  show the active account"
     echo "  ccswitch rm <name>         delete a saved profile"
