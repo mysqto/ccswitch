@@ -8,6 +8,8 @@ function ccswitch -d "switch between multiple Claude Code accounts"
             __ccswitch_save "$home" "$config" $argv[2]
         case add
             __ccswitch_add "$home" "$config" $argv[2]
+        case isolate iso
+            __ccswitch_isolate $argv[2..-1]
         case list ls
             __ccswitch_list "$home" "$config"
         case current whoami
@@ -81,7 +83,7 @@ function __ccswitch_save -d "snapshot the current account into a profile"
         echo "usage: ccswitch save <name>" >&2
         return 1
     end
-    if contains -- "$name" save add list ls current whoami use rm remove delete help
+    if contains -- "$name" save add isolate iso shared list ls current whoami use rm remove delete help
         echo "ccswitch: '$name' is a reserved word, pick another profile name" >&2
         return 1
     end
@@ -121,7 +123,7 @@ function __ccswitch_add -d "log in a new account and save it as a profile"
         echo "usage: ccswitch add <name>" >&2
         return 1
     end
-    if contains -- "$name" save add list ls current whoami use rm remove delete help
+    if contains -- "$name" save add isolate iso shared list ls current whoami use rm remove delete help
         echo "ccswitch: '$name' is a reserved word, pick another profile name" >&2
         return 1
     end
@@ -289,6 +291,67 @@ function __ccswitch_rm -d "delete a saved profile"
     echo "removed profile '$name'"
 end
 
+function __ccswitch_isolate_home -d "resolve the isolated-profile base directory"
+    if set -q CCSWITCH_ISOLATE_HOME
+        echo $CCSWITCH_ISOLATE_HOME
+    else
+        echo "$HOME/.claude/profiles"
+    end
+end
+
+function __ccswitch_link -d "symlink a shared path into a profile dir, non-destructively"
+    set -l target $argv[1]
+    set -l link $argv[2]
+    if test -L "$link"
+        ln -sfn "$target" "$link"
+    else if test -e "$link"
+        echo "ccswitch: $link exists and is not a symlink — leaving it as-is" >&2
+    else
+        ln -s "$target" "$link"
+    end
+end
+
+function __ccswitch_isolate -d "launch a concurrent session isolated to a profile, memory shared"
+    set -l base (__ccswitch_isolate_home)
+    set -l shared "$base/shared"
+    set -l name $argv[1]
+
+    if test -z "$name"
+        echo "isolated profiles in $base:"
+        set -l any 0
+        if test -d "$base"
+            for d in "$base"/*/
+                set -l n (basename "$d")
+                test "$n" = shared; and continue
+                test -L "$d/projects"; or continue
+                set any 1
+                echo "  $n"
+            end
+        end
+        test $any -eq 0; and echo "  (none yet)"
+        echo "usage: ccswitch isolate <name> [claude args...]"
+        return 0
+    end
+    if contains -- "$name" shared save add isolate iso list ls current whoami use rm remove delete help
+        echo "ccswitch: '$name' is a reserved word, pick another profile name" >&2
+        return 1
+    end
+
+    set -l dir "$base/$name"
+    mkdir -p "$shared/projects" "$dir"
+    touch "$shared/history.jsonl"
+    test -e "$shared/CLAUDE.md"; or touch "$shared/CLAUDE.md"
+
+    # share memory/history across profiles, keep auth (.claude.json + creds) per-dir
+    __ccswitch_link "$shared/projects" "$dir/projects"
+    __ccswitch_link "$shared/history.jsonl" "$dir/history.jsonl"
+    __ccswitch_link "$shared/CLAUDE.md" "$dir/CLAUDE.md"
+
+    echo "launching isolated '$name' — CLAUDE_CONFIG_DIR=$dir (memory shared via $shared)"
+    echo "(first run for a profile will ask you to sign in)"
+    env CLAUDE_CONFIG_DIR="$dir" claude $argv[2..-1]
+end
+
 function __ccswitch_help -d "show ccswitch usage"
     echo "ccswitch — switch between multiple Claude Code accounts"
     echo
@@ -297,10 +360,13 @@ function __ccswitch_help -d "show ccswitch usage"
     echo "  ccswitch use <name>        switch to <name> without launching claude"
     echo "  ccswitch add <name>        sign in to a new account and save it as <name>"
     echo "  ccswitch save <name>       save the current account as <name>"
+    echo "  ccswitch isolate <name>    run a concurrent session isolated to <name>,"
+    echo "                             with memory/history shared across profiles"
     echo "  ccswitch list | ls         list saved profiles (* marks the active one)"
     echo "  ccswitch current | whoami  show the active account"
     echo "  ccswitch rm <name>         delete a saved profile"
     echo "  ccswitch help              show this help"
     echo
     echo "profiles live in \$CCSWITCH_HOME (default ~/.claude/accounts)."
+    echo "isolated profiles live in \$CCSWITCH_ISOLATE_HOME (default ~/.claude/profiles)."
 end

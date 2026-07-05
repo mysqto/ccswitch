@@ -44,6 +44,7 @@ Requires [`jq`](https://jqlang.github.io/jq/).
 | `ccswitch <name> [args...]` | Switch to `<name>`, then start `claude` (extra args passed through) |
 | `ccswitch use <name>` | Switch without launching |
 | `ccswitch add <name>` | Sign in to a new account (`claude auth login`) and save it as `<name>` |
+| `ccswitch isolate <name> [args...]` | Run a **concurrent** session isolated to `<name>` (own credential) with memory/history shared across profiles |
 | `ccswitch save <name>` | Save the current account as `<name>` |
 | `ccswitch list` / `ls` | List profiles (`*` marks the active one) |
 | `ccswitch current` / `whoami` | Show the active account |
@@ -73,6 +74,49 @@ ccswitch save org-b
 
 `ccswitch list` distinguishes them by account **and** organization, so the same
 email can appear more than once with only the active org starred.
+
+## Concurrent sessions (shared memory, separate accounts)
+
+`ccswitch <name>` swaps a single machine-global account, so it is sequential —
+one active account at a time. To run **two accounts at once** (two terminals),
+use `ccswitch isolate`, which gives each profile its own
+[`CLAUDE_CONFIG_DIR`](https://code.claude.com/docs/en/settings):
+
+```fish
+ccswitch isolate work        # terminal 1 — signs in once, then reuses
+ccswitch isolate personal    # terminal 2 — a different account, at the same time
+```
+
+Each profile keeps its **own credential and identity**, but memory and history
+are **shared** — `isolate` symlinks `projects/` (session transcripts + the
+`memory/` files), `history.jsonl`, and `CLAUDE.md` from each profile to a common
+`shared/` directory. So both accounts see the same project memory and past
+sessions while staying logged in as different users.
+
+Layout (centralized under `~/.claude`, override with `$CCSWITCH_ISOLATE_HOME`):
+
+```
+~/.claude/profiles/
+  ├── shared/            # one real copy of the shared memory/history
+  │   ├── projects/
+  │   ├── history.jsonl
+  │   └── CLAUDE.md
+  ├── work/              # CLAUDE_CONFIG_DIR for "work"
+  │   ├── projects      -> ../shared/projects
+  │   ├── history.jsonl -> ../shared/history.jsonl
+  │   ├── CLAUDE.md     -> ../shared/CLAUDE.md
+  │   ├── .claude.json   # own account identity (NOT shared)
+  │   └── settings.json  # own settings
+  └── personal/          # CLAUDE_CONFIG_DIR for "personal" (same shared links)
+```
+
+`ccswitch isolate` with no name lists existing isolated profiles. Existing
+non-symlink files in a profile dir are left untouched (never clobbered).
+
+> Note: this pattern relies on `CLAUDE_CONFIG_DIR` (supported) plus symlinking of
+> account-agnostic paths (a community pattern, not officially documented). Auth
+> stays isolated; only memory/history is shared. Two sessions writing the same
+> project's memory simultaneously can race — low risk in practice.
 
 ## Profile storage
 
