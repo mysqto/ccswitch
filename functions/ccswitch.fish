@@ -313,6 +313,17 @@ function __ccswitch_link -d "symlink a shared path into a profile dir, non-destr
     end
 end
 
+function __ccswitch_seeded -d "true if the shared isolate dir has any seeded memory/history"
+    set -l shared $argv[1]
+    test -s "$shared/history.jsonl"; and return 0
+    test -s "$shared/CLAUDE.md"; and return 0
+    if test -d "$shared/projects"
+        set -l first (find "$shared/projects" -mindepth 1 -maxdepth 1 2>/dev/null | head -1)
+        test -n "$first"; and return 0
+    end
+    return 1
+end
+
 function __ccswitch_isolate -d "launch a concurrent session isolated to a profile, memory shared"
     set -l base (__ccswitch_isolate_home)
     set -l shared "$base/shared"
@@ -348,6 +359,18 @@ function __ccswitch_isolate -d "launch a concurrent session isolated to a profil
     __ccswitch_link "$shared/projects" "$dir/projects"
     __ccswitch_link "$shared/history.jsonl" "$dir/history.jsonl"
     __ccswitch_link "$shared/CLAUDE.md" "$dir/CLAUDE.md"
+
+    # blocking warning while the shared memory is still empty (unseeded)
+    if not __ccswitch_seeded "$shared"
+        echo "⚠  shared isolate memory is empty — this session starts with no" >&2
+        echo "   history or CLAUDE.md. Run 'ccswitch seed' first to import your" >&2
+        echo "   ~/.claude memory/history." >&2
+        read -l -P "   launch '$name' anyway? [y/N] " ans
+        if not string match -rqi '^y(es)?$' -- "$ans"
+            echo "aborted — nothing launched" >&2
+            return 1
+        end
+    end
 
     echo "launching isolated '$name' — CLAUDE_CONFIG_DIR=$dir (memory shared via $shared)"
     echo "(first run for a profile will ask you to sign in)"

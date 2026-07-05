@@ -124,6 +124,11 @@ ccswitch seed <dir>      # ... or from another config dir
 Re-run `ccswitch seed` anytime to re-sync from the source (source wins on
 same-named files).
 
+While `shared/` is empty, `ccswitch isolate` warns and asks for confirmation
+before launching (so you don't start with no memory by accident). The prompt
+stops appearing once `shared/` has content — from `ccswitch seed` or from your
+first session.
+
 > Note: this pattern relies on `CLAUDE_CONFIG_DIR` (supported) plus symlinking of
 > account-agnostic paths (a community pattern, not officially documented). Auth
 > stays isolated; only memory/history is shared. Two sessions writing the same
