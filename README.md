@@ -121,7 +121,7 @@ Each isolated session has its own credential but shares project memory and
 history. Re-running `ccswitch isolate <name>` reuses the earlier login. (If you
 skip `seed`, the first `isolate` warns that memory is empty and asks to confirm.)
 
-### Same login, multiple orgs
+## Same login, multiple orgs
 
 If one login (e.g. a Claude Team account) belongs to several organizations,
 each org is a separate profile — Claude Code issues a distinct org-scoped token
