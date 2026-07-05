@@ -50,15 +50,76 @@ Requires [`jq`](https://jqlang.github.io/jq/).
 | `ccswitch current` / `whoami` | Show the active account |
 | `ccswitch rm <name>` | Delete a profile |
 
-Typical first run:
+## Walkthrough
+
+A complete run, from a fresh install to switching daily.
+
+### 1. Save the account you're already signed into
 
 ```fish
-claude                 # log in as your first account
-ccswitch save personal
-claude /logout         # or log out via the app, then log in as the other account
-ccswitch save work
-ccswitch work          # from now on, switch freely
+claude auth status        # confirm who you're logged in as
+ccswitch save personal    # snapshot the active account as "personal"
 ```
+
+```fish
+ccswitch list
+# * personal          you@gmail.com
+```
+
+The `*` marks the currently active account.
+
+### 2. Add a second account
+
+`ccswitch add` signs you in to another account and saves it in one step:
+
+```fish
+ccswitch add work         # runs `claude auth login`, then saves it as "work"
+```
+
+<details>
+<summary>Prefer to do it by hand?</summary>
+
+```fish
+claude auth login         # sign in as the other account (or switch org via /login)
+ccswitch save work
+```
+</details>
+
+Both are now saved:
+
+```fish
+ccswitch list
+#   personal          you@gmail.com
+# * work              you@company.com (Acme)
+```
+
+### 3. Switch and work — the daily loop
+
+```fish
+ccswitch work             # become "work" and start a claude session
+ccswitch personal -c      # become "personal", continue the last conversation
+ccswitch use work         # just switch, don't launch anything
+ccswitch current          # you@company.com (Acme)
+```
+
+One command becomes an account and drops you into a session. Switching also
+re-snapshots the account you're leaving, so rotating tokens never go stale.
+
+### 4. Run two accounts at the same time
+
+Steps 1–3 swap one machine-global account (sequential — one at a time). To keep
+**two live sessions as different accounts concurrently**, use isolated profiles
+with shared memory:
+
+```fish
+ccswitch seed             # once: copy your ~/.claude memory + history into shared/
+ccswitch isolate work     # terminal 1 — sign in once as work
+ccswitch isolate personal # terminal 2 — sign in once as personal, at the same time
+```
+
+Each isolated session has its own credential but shares project memory and
+history. Re-running `ccswitch isolate <name>` reuses the earlier login. (If you
+skip `seed`, the first `isolate` warns that memory is empty and asks to confirm.)
 
 ### Same login, multiple orgs
 
