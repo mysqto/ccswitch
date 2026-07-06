@@ -17,6 +17,7 @@ complete -c ccswitch -f
 complete -c ccswitch -n __fish_use_subcommand -a add -d "log in a new account and save it"
 complete -c ccswitch -n __fish_use_subcommand -a isolate -d "concurrent isolated session (shared memory)"
 complete -c ccswitch -n __fish_use_subcommand -a seed -d "sync shared isolate memory from ~/.claude"
+complete -c ccswitch -n __fish_use_subcommand -a search -d "fuzzy-pick + resume a past session (via csx)"
 complete -c ccswitch -n __fish_use_subcommand -a save -d "save current account"
 complete -c ccswitch -n __fish_use_subcommand -a use -d "switch without launching"
 complete -c ccswitch -n __fish_use_subcommand -a list -d "list profiles"

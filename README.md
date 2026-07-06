@@ -48,7 +48,25 @@ Requires [`jq`](https://jqlang.github.io/jq/).
 | `ccswitch save <name>` | Save the current account as `<name>` |
 | `ccswitch list` / `ls` | List profiles (`*` marks the active one) |
 | `ccswitch current` / `whoami` | Show the active account |
+| `ccswitch search` / `s` `[scope…]` | Fuzzy-pick a past session (via [`csx`](https://github.com/mysqto/csx)) and resume it |
 | `ccswitch rm <name>` | Delete a profile |
+
+## Search past sessions
+
+`ccswitch search` (alias `s`) is an optional bridge to
+[`csx`](https://github.com/mysqto/csx), a local index of your AI-coding
+sessions. It fuzzy-picks a session and resumes it in the tool that produced it:
+
+```fish
+ccswitch search                 # sessions for the active tool → fzf → resume
+ccswitch search --repo payments # any csx scope flag passes straight through
+```
+
+It shells out to `csx sessions` (defaulting the scope to the active tool),
+previews each transcript with `csx show <id>` in `fzf`, and resumes the pick
+(`claude --resume <id>`, `codex resume <id>`, …). Requires `csx` and `fzf` on
+`PATH` (`jq` optional, for a nicer picker list). If `csx` isn't installed, every
+other `ccswitch` command still works — this subcommand just prints a hint.
 
 ## Walkthrough
 

@@ -12,6 +12,8 @@ function ccswitch -d "switch between multiple Claude Code accounts"
             __ccswitch_isolate $argv[2..-1]
         case seed
             __ccswitch_seed $argv[2..-1]
+        case search s
+            __ccswitch_search $argv[2..-1]
         case list ls
             __ccswitch_list "$home" "$config"
         case current whoami
@@ -85,7 +87,7 @@ function __ccswitch_save -d "snapshot the current account into a profile"
         echo "usage: ccswitch save <name>" >&2
         return 1
     end
-    if contains -- "$name" save add isolate iso seed shared list ls current whoami use rm remove delete help
+    if contains -- "$name" save add isolate iso seed search s shared list ls current whoami use rm remove delete help
         echo "ccswitch: '$name' is a reserved word, pick another profile name" >&2
         return 1
     end
@@ -125,7 +127,7 @@ function __ccswitch_add -d "log in a new account and save it as a profile"
         echo "usage: ccswitch add <name>" >&2
         return 1
     end
-    if contains -- "$name" save add isolate iso seed shared list ls current whoami use rm remove delete help
+    if contains -- "$name" save add isolate iso seed search s shared list ls current whoami use rm remove delete help
         echo "ccswitch: '$name' is a reserved word, pick another profile name" >&2
         return 1
     end
@@ -345,7 +347,7 @@ function __ccswitch_isolate -d "launch a concurrent session isolated to a profil
         echo "usage: ccswitch isolate <name> [claude args...]"
         return 0
     end
-    if contains -- "$name" shared save add isolate iso seed list ls current whoami use rm remove delete help
+    if contains -- "$name" shared save add isolate iso seed search s list ls current whoami use rm remove delete help
         echo "ccswitch: '$name' is a reserved word, pick another profile name" >&2
         return 1
     end
@@ -413,6 +415,64 @@ function __ccswitch_seed -d "sync the shared isolate memory/history from ~/.clau
     echo "done — isolate profiles now share this memory/history"
 end
 
+function __ccswitch_search -d "fuzzy-pick a past session via csx and resume it"
+    if not type -q csx
+        echo "ccswitch: csx not found on PATH — see github.com/mysqto/csx" >&2
+        return 127
+    end
+    if not type -q fzf
+        echo "ccswitch: fzf not found on PATH" >&2
+        return 127
+    end
+
+    # default the scope to the active tool unless the caller passed --tool
+    set -l tool
+    if contains -- --tool $argv
+        for i in (seq (count $argv))
+            test "$argv[$i]" = --tool; and set tool $argv[(math $i + 1)]
+        end
+    else if type -q jq
+        set tool (csx current --json 2>/dev/null | jq -r '.[0].tool // empty' 2>/dev/null)
+    end
+
+    set -l scope $argv
+    if not contains -- --tool $argv; and test -n "$tool"
+        set scope --tool $tool $scope
+    end
+
+    # project each session to "id<TAB>label"; fzf shows the label, keys off the id
+    set -l rows
+    if type -q jq
+        set rows (csx sessions --json $scope 2>/dev/null | jq -r '.[] | "\(.session_id)\t\(.tool // "-")  \(.project_name // "-")  \(.git_branch // "-")  (\(.msg_count) msgs)"')
+    else
+        set rows (csx sessions $scope 2>/dev/null | string match -r -v '^(LAST|no )')
+    end
+    if test -z "$rows"
+        echo "ccswitch: no sessions matched" >&2
+        return 1
+    end
+
+    set -l picked (printf '%s\n' $rows | fzf --with-nth=2.. --delimiter='\t' \
+        --preview 'csx show {1}' --preview-window='right,60%,wrap' --prompt='session> ')
+    or return $status
+    set -l id (printf '%s' $picked | string split -f1 \t)
+    test -z "$id"; and return 1
+
+    __ccswitch_resume "$tool" "$id"
+end
+
+function __ccswitch_resume --argument-names tool id -d "resume a session with its originating tool"
+    switch "$tool"
+        case claude-code ''
+            command claude --resume $id
+        case codex
+            command codex resume $id
+        case '*'
+            echo "ccswitch: don't know how to resume tool '$tool' (session $id)" >&2
+            return 2
+    end
+end
+
 function __ccswitch_help -d "show ccswitch usage"
     echo "ccswitch — switch between multiple Claude Code accounts"
     echo
@@ -425,6 +485,7 @@ function __ccswitch_help -d "show ccswitch usage"
     echo "                             with memory/history shared across profiles"
     echo "  ccswitch seed [dir]        copy CLAUDE.md/history/projects from ~/.claude"
     echo "                             (or [dir]) into the shared isolate memory"
+    echo "  ccswitch search | s [scope]  fuzzy-pick a past session (via csx) and resume it"
     echo "  ccswitch list | ls         list saved profiles (* marks the active one)"
     echo "  ccswitch current | whoami  show the active account"
     echo "  ccswitch rm <name>         delete a saved profile"
