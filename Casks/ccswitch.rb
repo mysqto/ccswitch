@@ -4,21 +4,21 @@ cask "ccswitch" do
 
   on_macos do
     on_arm do
-      sha256 :no_check
+      sha256 "c0149b1369129082de5ec9ef46e60175f781ef8b7460c31a76f4b58608aaf0bd"
       url "https://github.com/mysqto/ccswitch/releases/download/v#{version}/ccswitch-v#{version}-aarch64-apple-darwin.tar.gz"
     end
     on_intel do
-      sha256 :no_check
+      sha256 "77fe7cef2fa595915077508a8e7887ef43dcf82c1174807cb2ba7c2b4ec4c217"
       url "https://github.com/mysqto/ccswitch/releases/download/v#{version}/ccswitch-v#{version}-x86_64-apple-darwin.tar.gz"
     end
   end
   on_linux do
     on_arm do
-      sha256 :no_check
+      sha256 "75e41b06683ff1af81c0e03f715bcbc051f4a0dfb8bb0315fd8b13f3c01bafe2"
       url "https://github.com/mysqto/ccswitch/releases/download/v#{version}/ccswitch-v#{version}-aarch64-unknown-linux-gnu.tar.gz"
     end
     on_intel do
-      sha256 :no_check
+      sha256 "4ec69c0aacc9ca9872faf1e6d4624577748548d6c6d104cb2b2627f38f5a7129"
       url "https://github.com/mysqto/ccswitch/releases/download/v#{version}/ccswitch-v#{version}-x86_64-unknown-linux-gnu.tar.gz"
     end
   end
