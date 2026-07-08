@@ -147,15 +147,16 @@ function __ccswitch_add -d "log in a new account and save it as a profile"
     __ccswitch_save "$home" "$config" "$name"
 end
 
-function __ccswitch_stop_daemon -d "stop the Claude Code daemon supervisor so a switch takes effect"
-    # Recent Claude Code releases keep a background daemon that caches each
-    # account's auth in memory, so a switch would not take effect until the
-    # daemon exited. Stop its supervisor so the next session re-reads the
-    # restored credential, while any detached background sessions keep running.
+function __ccswitch_stop_daemon -d "stop the Claude Code daemon so a switch takes effect"
+    # Recent Claude Code releases keep a background daemon (and per-session
+    # workers) that cache each account's auth in memory. A kept worker holds
+    # the account it was started under, so `claude --resume` would reattach to
+    # it and ignore the switch. Stop the daemon and its workers so the next
+    # session — including a resume — re-reads the restored credential.
     # Best-effort — an older Claude Code or no running daemon is a harmless
     # no-op, and a failure never blocks the switch.
     command -sq claude; or return 0
-    command claude daemon stop --any --keep-workers >/dev/null 2>&1
+    command claude daemon stop --any >/dev/null 2>&1
     return 0
 end
 
