@@ -43,6 +43,17 @@ impl System for RealSystem {
             .unwrap_or(false)
     }
 
+    fn stop_daemon(&self) -> Result<()> {
+        // Best-effort: an old Claude Code without the daemon, a missing binary,
+        // or no daemon running are all fine — never fail the switch on this.
+        let _ = Proc::new("claude")
+            .args(["daemon", "stop", "--any", "--keep-workers"])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+        Ok(())
+    }
+
     fn make_symlink(&self, target: &Path, link: &Path) -> Result<()> {
         #[cfg(unix)]
         {

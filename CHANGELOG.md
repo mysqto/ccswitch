@@ -8,6 +8,19 @@ All notable changes to ccswitch are documented here. The format follows
 
 _Nothing yet._
 
+## [0.1.1] — 2026-07-08
+
+### Fixed
+
+- **Daemon-aware switching** — recent Claude Code releases keep a background
+  daemon running that caches each account's auth in memory, so a profile switch
+  did not take effect until the daemon exited. Every switch (`use` and the bare
+  `ccswitch <name>` form) now stops the daemon's supervisor first via `claude
+  daemon stop --any --keep-workers`, so the next session re-reads the restored
+  credentials while any detached background sessions keep running. It is
+  best-effort: an older Claude Code, a missing binary, or no running daemon
+  never blocks the switch (a warning is printed and the switch proceeds).
+
 ## [0.1.0] — 2026-07-08
 
 First release of the Rust CLI, superseding the original fish plugin (now under

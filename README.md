@@ -327,6 +327,12 @@ plaintext tokens to a shared or public repo.
 - Quit any running `claude` session before switching — an open session can
   rewrite `~/.claude.json` on exit and clobber the swap. `ccswitch` warns when
   it detects one.
+- Recent Claude Code releases keep a background **daemon** that caches each
+  account's auth in memory. On every switch `ccswitch` stops its supervisor
+  (`claude daemon stop --any --keep-workers`) so the next session re-reads the
+  restored credentials, while any detached background sessions keep running.
+  This is best-effort: on an older Claude Code, or when no daemon is running, it
+  is a no-op and the switch proceeds regardless.
 - Access tokens expire, but the refresh token is restored too, so Claude Code
   re-refreshes automatically after a switch.
 - OAuth refresh tokens rotate on every use. To keep snapshots valid, `ccswitch`
