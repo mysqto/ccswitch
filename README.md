@@ -41,10 +41,15 @@ ccswitch list          # every saved profile (* = active)
 
 ```sh
 brew tap mysqto/ccswitch https://github.com/mysqto/ccswitch
+brew trust mysqto/ccswitch     # newer Homebrew requires trusting a third-party tap
 brew install ccswitch          # formula (recommended) — also installs shell completions
 # or:
 brew install --cask ccswitch   # cask — installs the binary only (no completions)
 ```
+
+> Recent Homebrew refuses to load a cask/formula from an untrusted tap until you
+> run `brew trust <tap>` (a one-time consent per tap). If you skip it you'll see
+> "Refusing to load … from untrusted tap"; `brew trust mysqto/ccswitch` fixes it.
 
 The tap ships **both** a formula and a cask, auto-regenerated with real
 checksums on each release. Prefer `brew install ccswitch` (the **formula**): it
