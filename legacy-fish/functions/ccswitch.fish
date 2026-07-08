@@ -147,6 +147,18 @@ function __ccswitch_add -d "log in a new account and save it as a profile"
     __ccswitch_save "$home" "$config" "$name"
 end
 
+function __ccswitch_stop_daemon -d "stop the Claude Code daemon supervisor so a switch takes effect"
+    # Recent Claude Code releases keep a background daemon that caches each
+    # account's auth in memory, so a switch would not take effect until the
+    # daemon exited. Stop its supervisor so the next session re-reads the
+    # restored credential, while any detached background sessions keep running.
+    # Best-effort — an older Claude Code or no running daemon is a harmless
+    # no-op, and a failure never blocks the switch.
+    command -sq claude; or return 0
+    command claude daemon stop --any --keep-workers >/dev/null 2>&1
+    return 0
+end
+
 function __ccswitch_sync_current -d "re-snapshot the live account into its matching profile"
     # OAuth refresh tokens rotate on every use, so a profile saved earlier goes
     # stale as its account keeps running. Before switching away, copy the live
@@ -204,6 +216,10 @@ function __ccswitch_use -d "restore a profile as the active account"
     if command -sq pgrep; and pgrep -x claude >/dev/null 2>&1
         echo "ccswitch: warning — a running 'claude' may overwrite ~/.claude.json on exit; quit it first" >&2
     end
+
+    # a running daemon caches this account's auth; stop its supervisor so the
+    # next session picks up the restored credential (background sessions kept)
+    __ccswitch_stop_daemon
 
     # refresh the outgoing account's snapshot (its token may have rotated)
     __ccswitch_sync_current "$home" "$config"
