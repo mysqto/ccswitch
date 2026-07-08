@@ -248,9 +248,11 @@ pub trait System {
     /// Whether a `claude` process is currently running.
     fn claude_is_running(&self) -> bool;
 
-    /// Stop the Claude Code daemon's supervisor so the next session re-reads the
-    /// restored credentials, while leaving detached background sessions running
-    /// (`claude daemon stop --any --keep-workers`). Best-effort.
+    /// Stop the Claude Code daemon and its session workers so the next session
+    /// re-reads the restored credentials (`claude daemon stop --any`). A kept
+    /// worker would hold its original account in memory and a resumed session
+    /// would reattach to it, ignoring the switch — so workers are stopped too.
+    /// Best-effort.
     ///
     /// # Errors
     ///
@@ -545,9 +547,9 @@ impl<'a> App<'a> {
                 "warning: a running 'claude' may overwrite ~/.claude.json on exit; quit it first"
             )?;
         }
-        // A running daemon caches the account's auth; stop its supervisor so the
-        // next session picks up the restored credentials (detached background
-        // sessions keep running). Best-effort — never block the switch on it.
+        // A running daemon (and its session workers) cache the account's auth;
+        // stop them so the next session — including a `claude --resume` — picks
+        // up the restored credentials. Best-effort — never block the switch.
         if let Err(e) = self.system.stop_daemon() {
             writeln!(io.err, "warning: could not stop the claude daemon: {e}")?;
         }

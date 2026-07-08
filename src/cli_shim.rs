@@ -44,10 +44,13 @@ impl System for RealSystem {
     }
 
     fn stop_daemon(&self) -> Result<()> {
-        // Best-effort: an old Claude Code without the daemon, a missing binary,
-        // or no daemon running are all fine — never fail the switch on this.
+        // Stop the supervisor AND its session workers: a kept worker holds the
+        // account it was started under in memory, so `claude --resume` would
+        // reattach to it and ignore the switch. Killing workers makes every
+        // switch take effect. Best-effort: an old Claude Code without the
+        // daemon, a missing binary, or no daemon running never fail the switch.
         let _ = Proc::new("claude")
-            .args(["daemon", "stop", "--any", "--keep-workers"])
+            .args(["daemon", "stop", "--any"])
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .status();

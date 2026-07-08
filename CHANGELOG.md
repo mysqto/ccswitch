@@ -8,6 +8,18 @@ All notable changes to ccswitch are documented here. The format follows
 
 _Nothing yet._
 
+## [0.1.2] — 2026-07-08
+
+### Changed
+
+- **Daemon stop now includes session workers.** v0.1.1 stopped only the daemon
+  supervisor (`--keep-workers`), but a kept worker holds in memory the account
+  it was started under — so `claude --resume` reattached to the old worker and
+  the switch appeared to have no effect (the resumed session kept the previous
+  org). The switch now runs `claude daemon stop --any` (no `--keep-workers`), so
+  every subsequent session, resumed or fresh, picks up the switched account.
+  Trade-off: switching ends any detached background Claude Code sessions.
+
 ## [0.1.1] — 2026-07-08
 
 ### Fixed
