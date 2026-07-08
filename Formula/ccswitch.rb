@@ -2,26 +2,26 @@
 class Ccswitch < Formula
   desc "Cross-shell switcher for multiple Claude Code accounts"
   homepage "https://github.com/mysqto/ccswitch"
-  version "0.1.0"
+  version "0.1.1"
 
   on_macos do
     on_arm do
       url "https://github.com/mysqto/ccswitch/releases/download/v#{version}/ccswitch-v#{version}-aarch64-apple-darwin.tar.gz"
-      sha256 "c0149b1369129082de5ec9ef46e60175f781ef8b7460c31a76f4b58608aaf0bd"
+      sha256 "0a09874d7b0af578cafb2d9831d72f694d879d186cdc3483cd88e5f01b2e6835"
     end
     on_intel do
       url "https://github.com/mysqto/ccswitch/releases/download/v#{version}/ccswitch-v#{version}-x86_64-apple-darwin.tar.gz"
-      sha256 "77fe7cef2fa595915077508a8e7887ef43dcf82c1174807cb2ba7c2b4ec4c217"
+      sha256 "882c5382f1e7a7059130fe6957830386cb9d55b788e77a1b6e10a617f7b4859a"
     end
   end
   on_linux do
     on_arm do
       url "https://github.com/mysqto/ccswitch/releases/download/v#{version}/ccswitch-v#{version}-aarch64-unknown-linux-gnu.tar.gz"
-      sha256 "75e41b06683ff1af81c0e03f715bcbc051f4a0dfb8bb0315fd8b13f3c01bafe2"
+      sha256 "0cda51f04a6983cce2bd8f0dce945a5abf60bc877a73b5badfb9e3bb3b6b5e66"
     end
     on_intel do
       url "https://github.com/mysqto/ccswitch/releases/download/v#{version}/ccswitch-v#{version}-x86_64-unknown-linux-gnu.tar.gz"
-      sha256 "4ec69c0aacc9ca9872faf1e6d4624577748548d6c6d104cb2b2627f38f5a7129"
+      sha256 "35128946f7ca90df4b391dba636866e36b3bc151526ad3ae7c895e6d2379897c"
     end
   end
 
