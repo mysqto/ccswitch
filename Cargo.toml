@@ -1,0 +1,22 @@
+[package]
+name = "ccswitch"
+version = "0.1.0"
+edition = "2021"
+description = "Switch between multiple Claude Code accounts"
+license = "MIT"
+
+[[bin]]
+name = "ccswitch"
+path = "src/main.rs"
+
+[lib]
+name = "ccswitch"
+path = "src/lib.rs"
+
+[dependencies]
+clap = { version = "4.5", features = ["derive"] }
+clap_complete = "4.5"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+anyhow = "1.0"
+thiserror = "2.0"

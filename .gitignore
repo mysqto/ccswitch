@@ -1,3 +1,5 @@
+/target
+
 # ide related
 .idea
 .vscode

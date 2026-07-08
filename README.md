@@ -1,72 +1,155 @@
 # ccswitch
 
-A tiny [fish](https://fishshell.com) plugin to switch between multiple
-[Claude Code](https://claude.com/claude-code) accounts — personal, work,
-different orgs — and jump straight into a session.
+**Switch between multiple Claude Code accounts — personal, work, different
+orgs — and jump straight into a session.**
 
-```fish
+`ccswitch` is a small, fast, cross-shell command-line tool. An account is two
+things that must travel together: the OAuth credential (in the macOS Keychain,
+or `~/.claude/.credentials.json` elsewhere) and the identity Claude Code
+validates it against (`oauthAccount` + `userID` inside `~/.claude.json`).
+`ccswitch` snapshots both into a plain profile directory and restores them as a
+unit, so one command becomes an account and drops you into `claude`.
+
+```sh
 ccswitch work          # switch to the "work" account and start claude
 ccswitch personal -c   # switch to "personal", launch claude with -c
 ccswitch use work      # just switch, don't launch
-ccswitch list          # see every saved profile (* = active)
+ccswitch list          # every saved profile (* = active)
 ```
 
-## How it works
+- **One binary, every shell.** A single Rust binary with completions for bash,
+  zsh, fish, and PowerShell.
+- **Token-rotation safe.** OAuth refresh tokens rotate per *login*, shared
+  across every org that login can see; `ccswitch` re-snapshots the outgoing
+  credential into every sibling profile on each switch, so an actively used
+  account never goes stale.
+- **Concurrent sessions.** Run two accounts at once in separate terminals with
+  isolated config dirs but shared project memory and history.
+- **Session recall.** `ccswitch search` bridges to
+  [`csx`](https://github.com/mysqto/csx) + `fzf` to fuzzy-pick and resume any
+  past session.
 
-An account is two things that must travel together:
+> This Rust CLI supersedes the original fish plugin, now preserved under
+> [`legacy-fish/`](legacy-fish/). The commands are the same; the tool is now a
+> single portable binary rather than a fish-only function.
 
-1. **OAuth tokens** — the real credential. On macOS these live in the login
-   Keychain (`Claude Code-credentials`); on Linux/others in
-   `~/.claude/.credentials.json`. `ccswitch` picks the right backend per platform.
-2. **Identity** — the `oauthAccount` object and `userID` inside `~/.claude.json`,
-   which Claude Code validates the token against.
-
-`ccswitch save <name>` snapshots both into a plain profile directory. Switching
-restores the credential into the platform store and splices only `oauthAccount`
-and `userID` back into `~/.claude.json` (backing it up first — the rest of that
-file is shared and left untouched). Because a profile is just two JSON files, it
-is portable across machines and operating systems.
+---
 
 ## Install
 
-With [fisher](https://github.com/jorgebucaran/fisher):
+### Homebrew (macOS & Linux)
 
-```fish
-fisher install mysqto/ccswitch
+```sh
+brew tap mysqto/ccswitch https://github.com/mysqto/ccswitch
+brew install ccswitch          # formula (recommended) — also installs shell completions
+# or:
+brew install --cask ccswitch   # cask — installs the binary only (no completions)
 ```
 
-Requires [`jq`](https://jqlang.github.io/jq/).
+The tap ships **both** a formula and a cask, auto-regenerated with real
+checksums on each release. Prefer `brew install ccswitch` (the **formula**): it
+runs `ccswitch completions {bash,zsh,fish}` during install and drops each script
+into Homebrew's completion directories, so tab-completion works right away. The
+`--cask` route installs just the binary — use it if you don't want the formula,
+and set up completions yourself (see [Shell completions](#shell-completions)). Install one,
+not both — they each provide a `ccswitch` binary.
 
-## Usage
+### From source with Cargo
+
+```sh
+cargo install --git https://github.com/mysqto/ccswitch   # or, in a clone: cargo install --path .
+```
+
+### Prebuilt binary
+
+Download the tarball for your platform from the [latest release][releases],
+extract it, and put `ccswitch` on your `PATH`. Assets are named
+`ccswitch-<tag>-<target>.tar.gz`, each with a matching `.sha256`:
+
+| Platform | Target |
+| --- | --- |
+| macOS Apple Silicon | `aarch64-apple-darwin` |
+| macOS Intel | `x86_64-apple-darwin` |
+| Linux x86_64 | `x86_64-unknown-linux-gnu` |
+| Linux ARM64 | `aarch64-unknown-linux-gnu` |
+
+Every method produces a single `ccswitch` binary with no runtime dependencies
+(the optional `search` bridge aside).
+
+[releases]: https://github.com/mysqto/ccswitch/releases/latest
+
+---
+
+## Commands
+
+Run `ccswitch` (or `ccswitch help`) for usage. Every command is below.
 
 | Command | Action |
 | --- | --- |
 | `ccswitch <name> [args...]` | Switch to `<name>`, then start `claude` (extra args passed through) |
 | `ccswitch use <name>` | Switch without launching |
-| `ccswitch add <name>` | Sign in to a new account (`claude auth login`) and save it as `<name>` |
-| `ccswitch isolate <name> [args...]` | Run a **concurrent** session isolated to `<name>` (own credential) with memory/history shared across profiles |
-| `ccswitch save <name>` | Save the current account as `<name>` |
-| `ccswitch list` / `ls` | List profiles (`*` marks the active one) |
-| `ccswitch current` / `whoami` | Show the active account |
-| `ccswitch search` / `s` `[scope…]` | Fuzzy-pick a past session (via [`csx`](https://github.com/mysqto/csx)) and resume it |
-| `ccswitch rm <name>` | Delete a profile |
+| `ccswitch add <name> [--force]` | Sign in to a new account (`claude auth login`) and save it as `<name>` |
+| `ccswitch save <name> [--force]` | Snapshot the current account as `<name>` |
+| `ccswitch isolate <name> [args...]` | Run a **concurrent** session isolated to `<name>` (own credential, shared memory) |
+| `ccswitch isolate` | With no name, list existing isolated profiles |
+| `ccswitch seed [dir]` | Seed the shared isolate memory from `~/.claude` (or `dir`) |
+| `ccswitch search [scope...]` | Fuzzy-pick a past session (via `csx` + `fzf`) and resume it |
+| `ccswitch list` | List saved profiles (`*` marks the active one) |
+| `ccswitch current` | Show the active account |
+| `ccswitch rm <name>` | Delete a saved profile |
+| `ccswitch completions <shell>` | Print a completion script to stdout |
+| `ccswitch help` | Show usage |
 
-## Search past sessions
+**Aliases:** `iso` = `isolate`, `s` = `search`, `ls` = `list`, `whoami` =
+`current`, `remove`/`delete` = `rm`.
 
-`ccswitch search` (alias `s`) is an optional bridge to
-[`csx`](https://github.com/mysqto/csx), a local index of your AI-coding
-sessions. It fuzzy-picks a session and resumes it in the tool that produced it:
+**`--force`** (on `add` and `save`) overwrites an existing profile of the same
+name; without it, saving over an existing profile is refused.
 
-```fish
-ccswitch search                 # sessions for the active tool → fzf → resume
-ccswitch search --repo payments # any csx scope flag passes straight through
+Profile names may not collide with a reserved subcommand word (`save`, `add`,
+`isolate`, `iso`, `seed`, `search`, `s`, `list`, `ls`, `current`, `whoami`,
+`use`, `rm`, `remove`, `delete`, `help`).
+
+### Environment
+
+| Variable | Purpose | Default |
+| --- | --- | --- |
+| `CCSWITCH_HOME` | Where saved profiles live. | `~/.claude/accounts` |
+| `CCSWITCH_ISOLATE_HOME` | Where isolated profiles + shared memory live. | `~/.claude/profiles` |
+
+---
+
+## Shell completions
+
+`ccswitch completions <shell>` prints a completion script to stdout for
+`bash`, `zsh`, `fish`, `powershell` (and `elvish`). Install it once for your
+shell:
+
+**bash** — add to `~/.bashrc`:
+
+```sh
+source <(ccswitch completions bash)
 ```
 
-It shells out to `csx sessions` (defaulting the scope to the active tool),
-previews each transcript with `csx show <id>` in `fzf`, and resumes the pick
-(`claude --resume <id>`, `codex resume <id>`, …). Requires `csx` and `fzf` on
-`PATH` (`jq` optional, for a nicer picker list). If `csx` isn't installed, every
-other `ccswitch` command still works — this subcommand just prints a hint.
+**zsh** — write into a directory on your `$fpath` (before `compinit`):
+
+```sh
+ccswitch completions zsh > "${fpath[1]}/_ccswitch"
+```
+
+**fish**:
+
+```fish
+ccswitch completions fish > ~/.config/fish/completions/ccswitch.fish
+```
+
+**PowerShell** — add to your `$PROFILE`:
+
+```powershell
+ccswitch completions powershell | Out-String | Invoke-Expression
+```
+
+---
 
 ## Walkthrough
 
@@ -74,12 +157,9 @@ A complete run, from a fresh install to switching daily.
 
 ### 1. Save the account you're already signed into
 
-```fish
+```sh
 claude auth status        # confirm who you're logged in as
 ccswitch save personal    # snapshot the active account as "personal"
-```
-
-```fish
 ccswitch list
 # * personal          you@gmail.com
 ```
@@ -90,22 +170,13 @@ The `*` marks the currently active account.
 
 `ccswitch add` signs you in to another account and saves it in one step:
 
-```fish
+```sh
 ccswitch add work         # runs `claude auth login`, then saves it as "work"
 ```
 
-<details>
-<summary>Prefer to do it by hand?</summary>
-
-```fish
-claude auth login         # sign in as the other account (or switch org via /login)
-ccswitch save work
-```
-</details>
-
 Both are now saved:
 
-```fish
+```sh
 ccswitch list
 #   personal          you@gmail.com
 # * work              you@company.com (Acme)
@@ -113,7 +184,7 @@ ccswitch list
 
 ### 3. Switch and work — the daily loop
 
-```fish
+```sh
 ccswitch work             # become "work" and start a claude session
 ccswitch personal -c      # become "personal", continue the last conversation
 ccswitch use work         # just switch, don't launch anything
@@ -123,29 +194,13 @@ ccswitch current          # you@company.com (Acme)
 One command becomes an account and drops you into a session. Switching also
 re-snapshots the account you're leaving, so rotating tokens never go stale.
 
-### 4. Run two accounts at the same time
-
-Steps 1–3 swap one machine-global account (sequential — one at a time). To keep
-**two live sessions as different accounts concurrently**, use isolated profiles
-with shared memory:
-
-```fish
-ccswitch seed             # once: copy your ~/.claude memory + history into shared/
-ccswitch isolate work     # terminal 1 — sign in once as work
-ccswitch isolate personal # terminal 2 — sign in once as personal, at the same time
-```
-
-Each isolated session has its own credential but shares project memory and
-history. Re-running `ccswitch isolate <name>` reuses the earlier login. (If you
-skip `seed`, the first `isolate` warns that memory is empty and asks to confirm.)
-
-## Same login, multiple orgs
+### Same login, multiple orgs
 
 If one login (e.g. a Claude Team account) belongs to several organizations,
 each org is a separate profile — Claude Code issues a distinct org-scoped token
 per org. Save one after switching org inside Claude Code (`/login`):
 
-```fish
+```sh
 ccswitch save org-a      # while the first org is active
 # switch org in Claude Code, then:
 ccswitch save org-b
@@ -154,16 +209,19 @@ ccswitch save org-b
 `ccswitch list` distinguishes them by account **and** organization, so the same
 email can appear more than once with only the active org starred.
 
-## Concurrent sessions (shared memory, separate accounts)
+---
 
-`ccswitch <name>` swaps a single machine-global account, so it is sequential —
-one active account at a time. To run **two accounts at once** (two terminals),
+## Concurrent sessions (isolate + seed)
+
+`ccswitch <name>` swaps a single machine-global account, so it is **sequential**
+— one active account at a time. To run **two accounts at once** (two terminals),
 use `ccswitch isolate`, which gives each profile its own
 [`CLAUDE_CONFIG_DIR`](https://code.claude.com/docs/en/settings):
 
-```fish
-ccswitch isolate work        # terminal 1 — signs in once, then reuses
-ccswitch isolate personal    # terminal 2 — a different account, at the same time
+```sh
+ccswitch seed             # once: copy your ~/.claude memory + history into shared/
+ccswitch isolate work     # terminal 1 — sign in once as work
+ccswitch isolate personal # terminal 2 — sign in once as personal, at the same time
 ```
 
 Each profile keeps its **own credential and identity**, but memory and history
@@ -172,7 +230,8 @@ are **shared** — `isolate` symlinks `projects/` (session transcripts + the
 `shared/` directory. So both accounts see the same project memory and past
 sessions while staying logged in as different users.
 
-Layout (centralized under `~/.claude`, override with `$CCSWITCH_ISOLATE_HOME`):
+Layout (centralized under `~/.claude/profiles`, override with
+`$CCSWITCH_ISOLATE_HOME`):
 
 ```
 ~/.claude/profiles/
@@ -192,26 +251,46 @@ Layout (centralized under `~/.claude`, override with `$CCSWITCH_ISOLATE_HOME`):
 `ccswitch isolate` with no name lists existing isolated profiles. Existing
 non-symlink files in a profile dir are left untouched (never clobbered).
 
-`shared/` starts **empty** — isolated profiles begin with fresh memory. To carry
-your existing memory/history over, seed it once from your default `~/.claude`:
+**Seeding.** `shared/` starts empty — isolated profiles begin with fresh
+memory. Carry your existing memory/history over once:
 
-```fish
+```sh
 ccswitch seed            # copies CLAUDE.md, history.jsonl and projects/ from ~/.claude
 ccswitch seed <dir>      # ... or from another config dir
 ```
 
 Re-run `ccswitch seed` anytime to re-sync from the source (source wins on
-same-named files).
+same-named files). While `shared/` is empty, `ccswitch isolate` warns and asks
+for confirmation before launching, so you don't start with no memory by
+accident. The prompt stops once `shared/` has content.
 
-While `shared/` is empty, `ccswitch isolate` warns and asks for confirmation
-before launching (so you don't start with no memory by accident). The prompt
-stops appearing once `shared/` has content — from `ccswitch seed` or from your
-first session.
-
-> Note: this pattern relies on `CLAUDE_CONFIG_DIR` (supported) plus symlinking of
+> This pattern relies on `CLAUDE_CONFIG_DIR` (supported) plus symlinking of
 > account-agnostic paths (a community pattern, not officially documented). Auth
 > stays isolated; only memory/history is shared. Two sessions writing the same
 > project's memory simultaneously can race — low risk in practice.
+
+---
+
+## Search past sessions
+
+`ccswitch search` (alias `s`) is an optional bridge to
+[`csx`](https://github.com/mysqto/csx), a local index of your AI-coding
+sessions. It fuzzy-picks a session and resumes it in the tool that produced it:
+
+```sh
+ccswitch search                 # sessions for the active tool → fzf → resume
+ccswitch search --repo payments # any csx scope flag passes straight through
+ccswitch search --tool codex    # pick from Codex sessions instead
+```
+
+It shells out to `csx sessions --json` (defaulting the scope to the tool
+reported by `csx current`), previews each transcript with `csx show <id>` in
+`fzf`, and resumes the pick — `claude --resume <id>` for Claude Code, `codex
+resume <id>` for Codex. Requires `csx` and `fzf` on `PATH`. If either is
+missing, every other `ccswitch` command still works — this subcommand just
+prints a hint.
+
+---
 
 ## Profile storage
 
@@ -221,35 +300,48 @@ per profile:
 ```
 ~/.claude/accounts/work/
   ├── credentials.json   # OAuth blob
-  └── account.json       # oauthAccount + userID
+  └── account.json       # oauthAccount + userID (+ keychain account attr)
 ```
 
 Point `$CCSWITCH_HOME` at a synced folder or repo to move profiles between
-machines:
+machines.
 
-```fish
-set -Ux CCSWITCH_HOME ~/vault/claude-accounts
-```
-
-## ⚠️ These files are secrets
+### ⚠️ These files are secrets
 
 `credentials.json` holds a live bearer token. If you sync `$CCSWITCH_HOME` with
 git or a cloud folder, **encrypt it** — use a private repo with
-[git-crypt](https://github.com/AGWA/git-crypt) / [age](https://github.com/FiloSottile/age) /
+[git-crypt](https://github.com/AGWA/git-crypt) /
+[age](https://github.com/FiloSottile/age) /
 [SOPS](https://github.com/getsops/sops), or a real secret manager. Never commit
 plaintext tokens to a shared or public repo.
+
+---
 
 ## Notes
 
 - Quit any running `claude` session before switching — an open session can
-  rewrite `~/.claude.json` on exit and clobber the swap. `ccswitch` warns when it
-  detects one.
+  rewrite `~/.claude.json` on exit and clobber the swap. `ccswitch` warns when
+  it detects one.
 - Access tokens expire, but the refresh token is restored too, so Claude Code
   re-refreshes automatically after a switch.
 - OAuth refresh tokens rotate on every use. To keep snapshots valid, `ccswitch`
-  re-captures the outgoing account into its matching profile automatically on
-  every switch — so an account you actively use won't go stale.
+  re-captures the outgoing account into **every** profile that shares its token
+  on each switch — so an account you actively use won't go stale.
+
+---
+
+## Development
+
+```sh
+cargo build
+cargo test
+cargo fmt
+cargo clippy --all-targets --all-features -- -D warnings
+```
+
+Architecture, the ports-and-adapters layout, and the coverage discipline are
+documented in [`AGENTS.md`](AGENTS.md).
 
 ## License
 
-MIT
+MIT — see [`LICENSE`](LICENSE). Copyright (c) 2026 Chen Lei.
