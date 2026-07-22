@@ -8,6 +8,30 @@ All notable changes to ccswitch are documented here. The format follows
 
 _Nothing yet._
 
+## [0.1.3] — 2026-07-16
+
+### Fixed
+
+- **Same-login, multi-org switching is no longer cosmetic.** The default token
+  scope is now `PerAccountOrg` (one credential per `(account, org)`), not
+  `PerAccount`. A Claude Code OAuth token is bound **server-side to the org it
+  was minted under** — it is opaque and the server re-derives the org from it at
+  session start, overwriting `~/.claude.json`. The old `PerAccount` scope shared
+  one token across a login's orgs, so `sync_current` propagated one org's token
+  into the sibling profile; every "switch" then only relabelled `~/.claude.json`
+  while real sessions ran under the token's minting org. Each profile now keeps
+  its own org-scoped token, and `sync_current` re-snapshots **only the outgoing
+  profile**. (Existing profiles saved before this release share one token and
+  must be re-provisioned: `claude /login` into the right org, then
+  `ccswitch save <name> --force`.)
+
+### Removed
+
+- **The daemon-stop on switch (v0.1.1/v0.1.2).** It addressed a misdiagnosis:
+  there is no persistent Claude Code daemon holding auth, and stopping it never
+  affected switching. v0.1.2's worker-kill also needlessly ended background
+  sessions. Removed entirely.
+
 ## [0.1.2] — 2026-07-08
 
 ### Changed

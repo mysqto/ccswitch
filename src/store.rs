@@ -30,21 +30,27 @@ pub const CREDENTIALS_FILE: &str = "credentials.json";
 /// File name of the identity snapshot within a profile directory.
 pub const ACCOUNT_FILE: &str = "account.json";
 
-/// How broadly a single, rotating OAuth credential is shared.
+/// How a stored OAuth credential maps to profiles.
 ///
-/// This is the knob that fixes the auth-loss bug: the Claude Code refresh
-/// token rotates per *account*, shared across every organization a login can
-/// see. Keying a stored credential by the full `(account, org)` pair — as the
-/// original tool did — means two profiles for the same login but different
-/// orgs each believe they own a separate token, when in truth there is one.
-/// The first refresh under either org rotates the shared token and strands the
-/// sibling with a dead one.
+/// A Claude Code OAuth token is bound **server-side to the organization it was
+/// minted under**: it is opaque, carries no client-readable org, and the server
+/// re-derives the org from it at session start. So each `(account, org)` needs
+/// its own token, minted by that org's own `claude /login`
+/// ([`PerAccountOrg`](TokenScope::PerAccountOrg), the correct and default
+/// scope).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TokenScope {
-    /// One rotating credential per login, shared across all of its orgs.
-    /// Profiles are grouped by `accountUuid` alone.
+    /// One credential per login, treated as shared across all of its orgs
+    /// (profiles grouped by `accountUuid` alone).
+    ///
+    /// **Do not use for org switching.** This encodes the mistaken belief that
+    /// org selection is purely client-side. In reality it fuses two same-login
+    /// org profiles onto one org-bound token, so "switching" only relabels
+    /// `~/.claude.json` while every real session runs under the token's minting
+    /// org. Retained only for the grouping unit tests.
     PerAccount,
-    /// One credential per `(accountUuid, organizationUuid)` pair.
+    /// One credential per `(accountUuid, organizationUuid)` pair. The token is
+    /// org-bound, so this is the only correct scope for multi-org logins.
     PerAccountOrg,
 }
 

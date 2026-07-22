@@ -327,20 +327,19 @@ plaintext tokens to a shared or public repo.
 - Quit any running `claude` session before switching — an open session can
   rewrite `~/.claude.json` on exit and clobber the swap. `ccswitch` warns when
   it detects one.
-- Recent Claude Code releases keep a background **daemon** (and per-session
-  workers) that cache each account's auth in memory. On every switch `ccswitch`
-  stops the daemon and its workers (`claude daemon stop --any`) so the next
-  session re-reads the restored credentials. Workers are stopped too because a
-  kept worker holds the account it was started under, so a `claude --resume`
-  would reattach to it and ignore the switch. This is best-effort: on an older
-  Claude Code, or when no daemon is running, it is a no-op and the switch
-  proceeds regardless. **Note:** this ends any detached background Claude Code
-  sessions when you switch.
 - Access tokens expire, but the refresh token is restored too, so Claude Code
   re-refreshes automatically after a switch.
 - OAuth refresh tokens rotate on every use. To keep snapshots valid, `ccswitch`
-  re-captures the outgoing account into **every** profile that shares its token
-  on each switch — so an account you actively use won't go stale.
+  re-captures the **outgoing profile** (its own credential only) on each switch,
+  so an account you actively use won't go stale.
+- **Same login, multiple orgs:** a Claude Code OAuth token is bound
+  server-side to the organization it was minted under — org selection is *not*
+  purely client-side. Each org profile therefore needs its own token: run
+  `claude /login` and pick the org, then `ccswitch save <name>`. `ccswitch`
+  keeps each `(account, org)` profile's token separate and never copies one
+  org's token onto another. (If you use two orgs of the same login heavily, note
+  that Anthropic may rotate/invalidate the shared account's refresh token; if a
+  profile's token goes dead, re-`save` it after a fresh `claude /login`.)
 
 ---
 

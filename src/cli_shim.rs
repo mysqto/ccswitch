@@ -43,20 +43,6 @@ impl System for RealSystem {
             .unwrap_or(false)
     }
 
-    fn stop_daemon(&self) -> Result<()> {
-        // Stop the supervisor AND its session workers: a kept worker holds the
-        // account it was started under in memory, so `claude --resume` would
-        // reattach to it and ignore the switch. Killing workers makes every
-        // switch take effect. Best-effort: an old Claude Code without the
-        // daemon, a missing binary, or no daemon running never fail the switch.
-        let _ = Proc::new("claude")
-            .args(["daemon", "stop", "--any"])
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status();
-        Ok(())
-    }
-
     fn make_symlink(&self, target: &Path, link: &Path) -> Result<()> {
         #[cfg(unix)]
         {
@@ -185,12 +171,16 @@ pub fn run() -> anyhow::Result<()> {
         seed_default: claude,
     };
     let system = RealSystem;
+    // Each (account, org) profile owns its own credential. Claude Code's OAuth
+    // token is bound server-side to the org it was minted under, so sharing one
+    // token across a login's orgs (PerAccount) makes a "switch" cosmetic — the
+    // server re-derives the token's real org and reverts ~/.claude.json.
     let app = App::new(
         &system,
         creds.as_ref(),
         &store,
         paths,
-        TokenScope::PerAccount,
+        TokenScope::PerAccountOrg,
     );
 
     let stdout = std::io::stdout();

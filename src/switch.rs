@@ -7,23 +7,21 @@
 //! fake credential store and temp directories — no real Keychain or process
 //! spawning involved.
 //!
-//! ## The auth-loss fix
+//! ## Token scope: one credential per (account, org)
 //!
-//! The Claude Code OAuth refresh token rotates per **account**, shared across
-//! every organization a single login can operate in (org selection is
-//! client-side state in `~/.claude.json`, not part of the credential). The
-//! original tool re-snapshotted the live credential into only the one profile
-//! whose `(accountUuid, organizationUuid)` matched the live config. So two
-//! profiles for the same login but different orgs each held their own copy of
-//! the one shared token; the first refresh under either org rotated the shared
-//! token and left the sibling profile holding a dead one — a delayed forced
-//! re-login.
+//! A Claude Code OAuth token is bound **server-side to the organization it was
+//! minted under** — it is opaque (`sk-ant-oat…`), carries no client-readable
+//! org, and the server re-derives the org from the token at session start,
+//! overwriting `~/.claude.json`'s `oauthAccount`. So org selection is *not*
+//! merely client-side state: to operate in a different org you need a token
+//! minted for that org (its own `claude /login`).
 //!
-//! [`Switcher`] closes that gap: before switching away it re-snapshots the
-//! live credential into **every** profile that shares the outgoing account's
-//! token, as selected by the configured [`TokenScope`]. Under
-//! [`TokenScope::PerAccount`] that is all same-login profiles regardless of
-//! org, so a rotation under any org keeps every sibling current.
+//! Therefore a profile is keyed by the full `(accountUuid, organizationUuid)`
+//! pair ([`TokenScope::PerAccountOrg`]) and owns its own token. Before
+//! switching away, [`Switcher`] re-snapshots the live credential back into
+//! **only the outgoing profile** (whose key matches the live config), so a
+//! token rotated while it was active is captured before we move on — without
+//! ever overwriting a sibling profile that belongs to a different org.
 
 use crate::config;
 use crate::creds::CredentialStore;
@@ -95,10 +93,9 @@ impl<'a> Switcher<'a> {
 
     /// Activate profile `name` as the current account.
     ///
-    /// First re-snapshots the outgoing account (its token may have rotated)
-    /// into every profile that shares its token, then restores `name`'s
-    /// credential into the platform store and splices its identity into
-    /// `~/.claude.json`.
+    /// First re-snapshots the outgoing profile (its token may have rotated),
+    /// then restores `name`'s credential into the platform store and splices
+    /// its identity into `~/.claude.json`.
     ///
     /// # Errors
     ///
@@ -110,13 +107,13 @@ impl<'a> Switcher<'a> {
         // before we touch any live state.
         let target = self.store.load(name)?;
 
-        // Re-snapshot the outgoing account before overwriting it. This may
-        // update `name`'s own credential file too, when it shares the outgoing
-        // account's token — which is exactly what we want.
+        // Re-snapshot the outgoing profile before overwriting it, in case its
+        // token rotated while it was active. Under PerAccountOrg this touches
+        // only the profile whose (account, org) is the live one — never a
+        // sibling profile for a different org.
         self.sync_current()?;
 
-        // Restore the credential. Re-read it from the store so we pick up any
-        // rotation `sync_current` just propagated into this profile.
+        // Restore the target's credential from the store.
         let blob = self.store.load_credentials(name)?;
         self.creds.write(&blob, &target.keychain_account())?;
 
@@ -126,10 +123,12 @@ impl<'a> Switcher<'a> {
         Ok(target.account())
     }
 
-    /// Re-snapshot the live account's credential into every profile that
-    /// shares its token, and refresh the identity of the exact profile it maps
-    /// to. Silently does nothing when there is no config, no live identity, or
-    /// no active credential.
+    /// Re-snapshot the live account's credential (and identity) into the
+    /// profile that matches it under the configured [`TokenScope`]. Under
+    /// [`TokenScope::PerAccountOrg`] that is exactly the outgoing profile —
+    /// the one whose `(account, org)` equals the live config. Silently does
+    /// nothing when there is no config, no live identity, or no active
+    /// credential.
     ///
     /// # Errors
     ///

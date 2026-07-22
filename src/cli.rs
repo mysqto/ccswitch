@@ -248,17 +248,6 @@ pub trait System {
     /// Whether a `claude` process is currently running.
     fn claude_is_running(&self) -> bool;
 
-    /// Stop the Claude Code daemon and its session workers so the next session
-    /// re-reads the restored credentials (`claude daemon stop --any`). A kept
-    /// worker would hold its original account in memory and a resumed session
-    /// would reattach to it, ignoring the switch — so workers are stopped too.
-    /// Best-effort.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the daemon control command could not be run.
-    fn stop_daemon(&self) -> Result<()>;
-
     /// Create (or replace) a symlink at `link` pointing to `target`.
     ///
     /// # Errors
@@ -546,12 +535,6 @@ impl<'a> App<'a> {
                 io.err,
                 "warning: a running 'claude' may overwrite ~/.claude.json on exit; quit it first"
             )?;
-        }
-        // A running daemon (and its session workers) cache the account's auth;
-        // stop them so the next session — including a `claude --resume` — picks
-        // up the restored credentials. Best-effort — never block the switch.
-        if let Err(e) = self.system.stop_daemon() {
-            writeln!(io.err, "warning: could not stop the claude daemon: {e}")?;
         }
         let account = self.switcher().activate(name)?;
         writeln!(io.out, "switched to '{name}' ({})", email_of(&account))?;
@@ -946,11 +929,9 @@ mod tests {
         pick_err: bool,
         symlink_err: bool,
         exec_err: bool,
-        daemon_stop_err: bool,
         links: RefCell<Vec<(PathBuf, PathBuf)>>,
         execs: RefCell<Vec<ExecCall>>,
         sessions_scope: RefCell<Vec<String>>,
-        daemon_stops: RefCell<u32>,
     }
 
     impl System for FakeSystem {
@@ -965,13 +946,6 @@ mod tests {
         }
         fn claude_is_running(&self) -> bool {
             self.running
-        }
-        fn stop_daemon(&self) -> Result<()> {
-            *self.daemon_stops.borrow_mut() += 1;
-            if self.daemon_stop_err {
-                return Err(Error::Invalid("daemon".to_string()));
-            }
-            Ok(())
         }
         fn make_symlink(&self, target: &Path, link: &Path) -> Result<()> {
             if self.symlink_err {
@@ -1441,7 +1415,13 @@ mod tests {
         store: &'a Store,
         dir: &Path,
     ) -> App<'a> {
-        App::new(system, creds, store, paths_for(dir), TokenScope::PerAccount)
+        App::new(
+            system,
+            creds,
+            store,
+            paths_for(dir),
+            TokenScope::PerAccountOrg,
+        )
     }
 
     #[test]
@@ -1691,34 +1671,6 @@ mod tests {
         .unwrap();
         assert!(bufs.err().contains("warning: a running 'claude'"));
         assert!(bufs.out().contains("switched to 'dev' (a@example.com)"));
-        // The daemon supervisor is stopped as part of the switch.
-        assert_eq!(*system.daemon_stops.borrow(), 1);
-        fs::remove_dir_all(&dir).unwrap();
-    }
-
-    #[test]
-    fn use_warns_but_still_switches_when_daemon_stop_fails() {
-        let dir = temp_dir();
-        write_config(&dir, &config_json("B", "OB", "b@x", "Org B"));
-        let store = Store::new(dir.join("accounts"));
-        seed_profile(&store, "dev", "A", "OA", "a@example.com");
-        let creds = FakeCreds::with(Some("LIVE"), Some("attr"));
-        let system = FakeSystem {
-            daemon_stop_err: true,
-            ..Default::default()
-        };
-        let app = app_env(&system, &creds, &store, &dir);
-        let mut bufs = Bufs::new();
-        app.dispatch(
-            &mut bufs.io(),
-            Command::Use {
-                name: "dev".to_string(),
-            },
-        )
-        .unwrap();
-        assert!(bufs.err().contains("could not stop the claude daemon"));
-        assert!(bufs.out().contains("switched to 'dev' (a@example.com)"));
-        assert_eq!(*system.daemon_stops.borrow(), 1);
         fs::remove_dir_all(&dir).unwrap();
     }
 
