@@ -244,20 +244,16 @@ plaintext tokens to a shared or public repo.
 - Quit any running `claude` session before switching — an open session can
   rewrite `~/.claude.json` on exit and clobber the swap. `ccswitch` warns when it
   detects one.
-- Recent Claude Code releases keep a background **daemon** (and per-session
-  workers) that cache each account's auth in memory. On every switch `ccswitch`
-  stops the daemon and its workers (`claude daemon stop --any`) so the next
-  session re-reads the restored credential. Workers are stopped too because a
-  kept worker holds the account it was started under, so a `claude --resume`
-  would reattach to it and ignore the switch. It is best-effort: on an older
-  Claude Code, or when no daemon is running, it is a harmless no-op and the
-  switch proceeds regardless. **Note:** this ends any detached background
-  Claude Code sessions when you switch.
 - Access tokens expire, but the refresh token is restored too, so Claude Code
   re-refreshes automatically after a switch.
 - OAuth refresh tokens rotate on every use. To keep snapshots valid, `ccswitch`
-  re-captures the outgoing account into its matching profile automatically on
-  every switch — so an account you actively use won't go stale.
+  re-captures the outgoing profile's own credential automatically on every
+  switch — so an account you actively use won't go stale.
+- **Same login, multiple orgs:** a Claude Code OAuth token is bound
+  server-side to the organization it was minted under, so each org profile
+  needs its own token. Run `claude auth login` and pick the org, then
+  `ccswitch save <name>` — this tool keys profiles by `(account, org)` and
+  never copies one org's token onto another.
 
 ## License
 
