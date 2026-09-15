@@ -82,9 +82,15 @@ impl<'a> Switcher<'a> {
                 "profile '{name}' already exists (pass --force to overwrite)"
             )));
         }
-        let blob = self.creds.read()?.ok_or_else(|| {
-            Error::Invalid("no active credential found — sign in with 'claude' first".to_string())
-        })?;
+        let Some(blob) = self.creds.read()? else {
+            // The store may know *why* it came up empty (an unreachable
+            // Keychain reads the same as a signed-out one, but is not).
+            return Err(Error::Invalid(
+                self.creds.unavailable_hint()?.unwrap_or_else(|| {
+                    "no active credential found — sign in with 'claude' first".to_string()
+                }),
+            ));
+        };
         let config = config::load(&self.config_path)?;
         let snapshot = self.identity_snapshot(&config)?;
         self.store.save_profile(name, &blob, &snapshot)?;
@@ -187,6 +193,7 @@ mod tests {
         fail_read: bool,
         fail_write: bool,
         fail_acct: bool,
+        hint: Option<String>,
     }
 
     impl FakeCredentialStore {
@@ -197,6 +204,7 @@ mod tests {
                 fail_read: false,
                 fail_write: false,
                 fail_acct: false,
+                hint: None,
             }
         }
     }
@@ -222,6 +230,10 @@ mod tests {
                 return Err(Error::Invalid("account_attr failed".to_string()));
             }
             Ok(self.acct.clone())
+        }
+
+        fn unavailable_hint(&self) -> Result<Option<String>> {
+            Ok(self.hint.clone())
         }
     }
 
@@ -325,6 +337,19 @@ mod tests {
         let switcher = Switcher::new(&creds, &store, &config, TokenScope::PerAccount);
         let err = switcher.save("orga", false).unwrap_err();
         assert!(matches!(err, Error::Invalid(msg) if msg.contains("no active credential")));
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn save_without_credential_prefers_the_store_hint() {
+        let dir = temp_dir();
+        let config = write_config(&dir, &config_json("A", "O1", "a@x", "uid-a"));
+        let store = Store::new(dir.join("accounts"));
+        let mut creds = FakeCredentialStore::with(None, None);
+        creds.hint = Some("the Keychain is unreachable".to_string());
+        let switcher = Switcher::new(&creds, &store, &config, TokenScope::PerAccount);
+        let err = switcher.save("orga", false).unwrap_err();
+        assert!(matches!(err, Error::Invalid(msg) if msg == "the Keychain is unreachable"));
         fs::remove_dir_all(&dir).unwrap();
     }
 

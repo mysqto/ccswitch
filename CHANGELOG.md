@@ -6,7 +6,59 @@ All notable changes to ccswitch are documented here. The format follows
 
 ## [Unreleased]
 
-_Nothing yet._
+### Fixed
+
+- **Switching now works on headless and pure-SSH machines.** Claude Code's macOS
+  credential store is a composite — Keychain first, falling back to plaintext
+  `~/.claude/.credentials.json`, with a failed Keychain write migrating the
+  credential into that file. Over SSH the login Keychain cannot be unlocked
+  without a GUI prompt (`security` exits 36, `errSecInteractionNotAllowed`), so
+  Claude Code lives entirely in the file. `ccswitch` only ever looked at the
+  Keychain, so `save` reported "no active credential" on a machine that was
+  signed in, `sync_current` silently dropped rotated tokens, and a switch left
+  `~/.claude.json` naming the new account while the live token still belonged to
+  the old one — which Claude Code reports as **not logged in**. The macOS store
+  now mirrors Claude Code's arbitration and keeps exactly one authoritative
+  copy: a successful Keychain write deletes the plaintext file, a failed one
+  deletes the Keychain item, so a stale copy can never shadow the switch from
+  the other kind of session.
+- **The Keychain `acct` attribute is captured again.** `security
+  find-generic-password -g` prints attributes on stdout and the password on
+  stderr; `account_attr` parsed stderr, so it always came back empty and every
+  profile stored `keychain_account: ""`. (Writes fell through to `$USER`, which
+  is what Claude Code looks items up by, so this was invisible.)
+
+- **`$CLAUDE_CONFIG_DIR` is honored.** It moves `.claude.json` and the
+  credential fallback, and — the part that is easy to miss — it *renames the
+  Keychain item*: Claude Code namespaces the service with the first eight hex
+  characters of `sha256($CLAUDE_CONFIG_DIR)`. `ccswitch` hardcoded
+  `"Claude Code-credentials"`, so with the variable set it read and wrote a
+  **different account's** credential while patching the wrong config file. This
+  affected ordinary use, because `ccswitch isolate` launches `claude` with
+  `CLAUDE_CONFIG_DIR` set to the isolate directory. The related
+  `$CLAUDE_SECURESTORAGE_CONFIG_DIR` and `$CLAUDE_CODE_CUSTOM_OAUTH_URL` feed
+  the same derivation and are honored too.
+- **The OAuth token no longer appears in `security`'s argv**, where `ps` exposed
+  it to every user on the machine for the duration of a switch. It is now
+  hex-encoded and piped to `security -i`, with the same argv fallback Claude
+  Code uses for a blob past the stdin limit. Account attributes are also
+  sanitized the way Claude Code sanitizes them, so the two cannot end up
+  addressing different items.
+
+### Changed
+
+- Profile and isolate storage now default to `accounts/` and `profiles/` inside
+  Claude Code's **resolved** config directory rather than always `~/.claude`.
+  With `$CLAUDE_CONFIG_DIR` unset this is the same path as before. With it set,
+  each config directory gets its own profiles; set `$CCSWITCH_HOME` to a fixed
+  path to share one set across all of them.
+
+### Added
+
+- `$CCSWITCH_CREDENTIALS=file` (or `plaintext`) forces the plaintext backend and
+  skips the Keychain entirely — for a Mac you only ever reach over SSH.
+- `ccswitch save` now says when the Keychain is locked or unreachable, instead
+  of reporting a reachable-but-empty store and a locked one identically.
 
 ## [0.1.3] — 2026-07-16
 

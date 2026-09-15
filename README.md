@@ -5,7 +5,7 @@ orgs — and jump straight into a session.**
 
 `ccswitch` is a small, fast, cross-shell command-line tool. An account is two
 things that must travel together: the OAuth credential (in the macOS Keychain,
-or `~/.claude/.credentials.json` elsewhere) and the identity Claude Code
+falling back to `~/.claude/.credentials.json`) and the identity Claude Code
 validates it against (`oauthAccount` + `userID` inside `~/.claude.json`).
 `ccswitch` snapshots both into a plain profile directory and restores them as a
 unit, so one command becomes an account and drops you into `claude`.
@@ -119,8 +119,19 @@ Profile names may not collide with a reserved subcommand word (`save`, `add`,
 
 | Variable | Purpose | Default |
 | --- | --- | --- |
-| `CCSWITCH_HOME` | Where saved profiles live. | `~/.claude/accounts` |
-| `CCSWITCH_ISOLATE_HOME` | Where isolated profiles + shared memory live. | `~/.claude/profiles` |
+| `CCSWITCH_HOME` | Where saved profiles live. | `accounts/` inside Claude Code's config dir |
+| `CCSWITCH_ISOLATE_HOME` | Where isolated profiles + shared memory live. | `profiles/` inside Claude Code's config dir |
+| `CCSWITCH_CREDENTIALS` | Credential backend. `file` (or `plaintext`) skips the macOS Keychain and uses the plaintext fallback only. | auto |
+
+`ccswitch` also *reads* Claude Code's own variables so it always addresses the
+same account Claude Code would — see [Multiple config
+directories](#multiple-config-directories).
+
+| Variable | Effect |
+| --- | --- |
+| `CLAUDE_CONFIG_DIR` | Moves `.claude.json`, the credential fallback, and the Keychain item. |
+| `CLAUDE_SECURESTORAGE_CONFIG_DIR` | Moves only the credential store. |
+| `CLAUDE_CODE_CUSTOM_OAUTH_URL` | Adds a `-custom-oauth` infix to both. |
 
 ---
 
@@ -297,10 +308,42 @@ prints a hint.
 
 ---
 
+## Multiple config directories
+
+`$CLAUDE_CONFIG_DIR` does not merely move `~/.claude`. It also moves
+`.claude.json`, and — the part that is easy to miss — it **renames the Keychain
+item**: Claude Code namespaces the service with the first eight hex characters
+of the directory's SHA-256.
+
+```text
+unset                    → "Claude Code-credentials"
+CLAUDE_CONFIG_DIR=/w     → "Claude Code-credentials-<sha256(/w)[0..8]>"
+```
+
+So a tool that ignores the variable does not just read the wrong config file —
+it reads and writes a *different account's* credential. `ccswitch` computes the
+same service name, so every command addresses exactly the account Claude Code
+would in the same environment.
+
+This is not an exotic case: `ccswitch isolate` launches `claude` with
+`CLAUDE_CONFIG_DIR` set to the isolate directory, so any `ccswitch` run from
+inside an isolated session is affected.
+
+Profile and isolate storage follow the config directory too, so a given
+`$CLAUDE_CONFIG_DIR` gets its own set of profiles. Point `$CCSWITCH_HOME` at a
+fixed path if you would rather share one set across all of them.
+
+> Claude Code normalizes the directory to Unicode NFC before hashing.
+> `ccswitch` hashes the path as given, which agrees for every ASCII path and in
+> practice everything short of a decomposed non-ASCII path. If you have one,
+> set `CCSWITCH_CREDENTIALS=file` or use an ASCII path.
+
+---
+
 ## Profile storage
 
-Profiles live in `$CCSWITCH_HOME` (default `~/.claude/accounts`), one directory
-per profile:
+Profiles live in `$CCSWITCH_HOME` (default `accounts/` inside Claude Code's
+config directory, i.e. `~/.claude/accounts`), one directory per profile:
 
 ```
 ~/.claude/accounts/work/
@@ -319,6 +362,49 @@ git or a cloud folder, **encrypt it** — use a private repo with
 [age](https://github.com/FiloSottile/age) /
 [SOPS](https://github.com/getsops/sops), or a real secret manager. Never commit
 plaintext tokens to a shared or public repo.
+
+On macOS the token is hex-encoded and piped to `security -i` rather than passed
+as a command-line argument, so it is not visible in `ps` to other users on the
+machine while a switch runs. (A blob too large for `security`'s stdin limit
+falls back to argv, exactly as Claude Code does.)
+
+---
+
+## Headless and SSH machines
+
+Claude Code does not keep its credential in the macOS Keychain unconditionally.
+Its store is a composite: it reads the Keychain first and falls back to
+plaintext `~/.claude/.credentials.json`, and when a Keychain write fails it
+moves the credential into that file instead. On a Mac you only ever reach over
+SSH, the login Keychain cannot be unlocked without a GUI prompt — `security`
+exits 36, `errSecInteractionNotAllowed` — so Claude Code is living entirely in
+the plaintext file. Linux and Windows always use the file.
+
+`ccswitch` mirrors that arbitration exactly, so the two never disagree about
+which copy is authoritative:
+
+- **Reading** — the Keychain wins. If it is empty *or* unreachable, the file is
+  read, so `ccswitch save` on a headless box snapshots the credential Claude
+  Code is actually using instead of reporting you as signed out.
+- **Writing** — the Keychain is tried first and, on success, the plaintext file
+  is deleted: left in place it is a stale credential waiting to resurface the
+  next time the Keychain is unreachable. If the Keychain write fails, the file
+  is written and the Keychain item dropped, so a stale Keychain copy cannot
+  shadow the switch from a GUI session.
+
+Without this, a switch over SSH left `~/.claude.json` naming the account you
+switched *to* while the live token still belonged to the account you switched
+*from* — which Claude Code reports as not logged in.
+
+If every `security` call on a machine is a dead end anyway, set
+`CCSWITCH_CREDENTIALS=file` to skip the Keychain entirely.
+
+> On a Mac used **both** at the console and over SSH, expect the credential to
+> migrate to the plaintext file the first time you switch over SSH, and to
+> return to the Keychain the first time you switch at the console. That is
+> Claude Code's own behavior; `ccswitch` keeps exactly one authoritative copy
+> either way. `~/.claude/.credentials.json` is written `0600`, but it is a
+> bearer token in plaintext — the same trade Claude Code makes.
 
 ---
 

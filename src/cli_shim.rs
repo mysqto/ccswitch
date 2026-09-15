@@ -8,7 +8,9 @@
 //! logic — every branch of behavior lives in [`crate::cli`] — and is excluded
 //! from coverage.
 
+use crate::claude_env::ClaudeEnv;
 use crate::cli::{self, App, Io, Paths, System};
+use crate::creds::sanitize_account;
 use crate::creds_shim::platform_store;
 use crate::error::{Error, Result};
 use crate::store::{Store, TokenScope};
@@ -159,15 +161,26 @@ pub fn run() -> anyhow::Result<()> {
     };
 
     let home = home_dir();
-    let claude = cli::claude_dir(&home);
+    // Claude Code's state follows $CLAUDE_CONFIG_DIR — including the name of
+    // its Keychain item — so every path and the service name come from here.
+    let env = ClaudeEnv::new(
+        std::env::var("CLAUDE_CONFIG_DIR").ok(),
+        std::env::var("CLAUDE_SECURESTORAGE_CONFIG_DIR").ok(),
+        std::env::var("CLAUDE_CODE_CUSTOM_OAUTH_URL").ok(),
+    );
+    let claude = env.config_dir(&home);
     let store = Store::new(cli::ccswitch_home(
         std::env::var("CCSWITCH_HOME").ok(),
-        &home,
+        &claude,
     ));
-    let creds = platform_store(claude.clone());
+    let creds = platform_store(
+        env.credentials_dir(&home),
+        env.keychain_service(),
+        sanitize_account(&std::env::var("USER").unwrap_or_default()),
+    );
     let paths = Paths {
-        config: cli::config_path(&home),
-        isolate_base: cli::isolate_home(std::env::var("CCSWITCH_ISOLATE_HOME").ok(), &home),
+        config: env.config_path(&home),
+        isolate_base: cli::isolate_home(std::env::var("CCSWITCH_ISOLATE_HOME").ok(), &claude),
         seed_default: claude,
     };
     let system = RealSystem;

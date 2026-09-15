@@ -75,11 +75,13 @@ port → output.**
 
 | Module           | Role                                                                                             | Port(s) → shim |
 | ---------------- | ------------------------------------------------------------------------------------------------ | -------------- |
+| `sha256.rs`      | A dependency-free SHA-256 (`hex_digest`). Exists only because Claude Code namespaces its Keychain service with `sha256($CLAUDE_CONFIG_DIR)[0..8]`, and the dependency budget does not stretch to `sha2` + six transitive crates for one 8-char string. Checked against the FIPS vectors. | — |
+| `claude_env.rs`  | `ClaudeEnv` — resolves everything Claude Code's own env vars move: the config dir, `.claude.json`, the credential-fallback dir, and the **Keychain service name**. See *Config directories* below. | — |
 | `model.rs`       | Domain types: `Account` (uuid/org/email/org-name) and `Profile` (persisted `account.json`).      | — |
 | `error.rs`       | `Error` / `Result` (`ProfileNotFound`, `ReservedName`, `Invalid`, wrapped `Io`/`Json`).          | — |
 | `config.rs`      | Read/splice `~/.claude.json`: extract + reinsert the `{oauthAccount, userID}` identity, leaving every other key untouched. Plain-file JSON, temp-tested. | — |
-| `creds.rs`       | `CredentialStore` trait + the `FileStore` (`<config>/.credentials.json`) fallback used off macOS. Temp-tested. | `CredentialStore` |
-| `creds_shim.rs`  | Real macOS Keychain adapter (`security` binary) + `platform_store` `cfg` selection.              | `CredentialStore` → **shim** |
+| `creds.rs`       | `CredentialStore` + `Keychain` traits, the `FileStore` (`<config>/.credentials.json`), and `KeychainStore` — the composite that mirrors Claude Code's own Keychain-over-plaintext arbitration (see *Headless machines* below). Also `security` exit-code classification, `acct` parsing, and `Backend`/`select_store`. Temp-tested against a fake `Keychain`. | `CredentialStore`, `Keychain` |
+| `creds_shim.rs`  | `SecurityBinary` — a single `run(args, stdin)` that spawns `security` and returns unclassified exit status + streams — plus `platform_store` (`cfg` + env, no decisions). | `Keychain` → **shim** |
 | `store.rs`       | The on-disk profile store under `$CCSWITCH_HOME`; `TokenScope` (`PerAccount` / `PerAccountOrg`) — the knob behind the auth-loss fix. Temp-tested. | — |
 | `switch.rs`      | `Switcher` — save/activate orchestration over `creds` + `config` + `store`; re-snapshots the outgoing credential into every token-sharing sibling. | consumes `CredentialStore` |
 | `cli.rs`         | clap types, the `Command` model, `App::dispatch` + every handler, `System` port, path resolution, symlink planning, `search`/`isolate`/`seed` logic, completion generation. | `System` |
@@ -108,6 +110,65 @@ credential into **every** profile that shares the outgoing account's token, as
 selected by `TokenScope`. Production wires `TokenScope::PerAccount` (group by
 `accountUuid` alone), so a rotation under any org keeps every sibling current.
 Preserve this behavior; it is the reason the Rust tool exists.
+
+---
+
+## Headless machines (why the credential store is a composite)
+
+Claude Code's macOS credential store is `keychain-with-plaintext-fallback`: it
+reads the Keychain first and falls back to `~/.claude/.credentials.json`, and a
+failed Keychain write migrates the credential into that file. Over SSH the
+login Keychain cannot be unlocked without a GUI prompt (`security` exits 36,
+`errSecInteractionNotAllowed`), so Claude Code is living entirely in the file.
+
+A Keychain-only `ccswitch` is blind to that: `read` sees nothing (so `save`
+claims you are signed out and `sync_current` silently drops a rotated token)
+and `write` cannot land the incoming credential, leaving `~/.claude.json`
+naming the new account while the live token is still the old one — which Claude
+Code reports as not logged in.
+
+`KeychainStore` therefore mirrors the same arbitration, and in particular keeps
+**one** authoritative copy: a successful Keychain write deletes the plaintext
+file, and a failed one deletes the Keychain item. Dropping either half of that
+lets a stale copy shadow the switch from the other kind of session. Preserve
+this; `$CCSWITCH_CREDENTIALS=file` forces the plaintext path outright.
+
+Note that `security find-generic-password -g` prints attributes on **stdout**
+and the password on stderr — parsing the wrong stream silently yields no `acct`
+attribute forever.
+
+The credential must never reach `security`'s argv, which `ps` exposes to every
+user on the machine. `KeychainStore::store_password` hex-encodes it and pipes
+`add-generic-password … -X <hex>` to `security -i`, dropping to argv only past
+the 4032-character stdin limit — the same boundary Claude Code uses. The
+`Keychain` port is deliberately a single `run(args, stdin)` so that this choice
+is a decision in `creds.rs` with a test asserting the secret never appears in
+argv, not something buried in the shim.
+
+---
+
+## Config directories (why `claude_env.rs` exists)
+
+`$CLAUDE_CONFIG_DIR` moves `.claude.json` and the credential fallback, and it
+**renames the Keychain item**: Claude Code appends
+`-${sha256(dir).hex[0..8]}` to the service name. A tool that hardcodes
+`"Claude Code-credentials"` therefore reads and writes a *different account's*
+credential whenever the variable is set — including inside `ccswitch isolate`,
+which launches `claude` with it set to the isolate directory.
+
+`ClaudeEnv` owns that computation; `cli_shim::run` reads the variables and
+everything else takes resolved paths and a service `String`. Two relatives feed
+the same derivation: `$CLAUDE_SECURESTORAGE_CONFIG_DIR` (relocates only the
+credential store, and "defined but empty" means the *default* store, not a new
+namespace) and `$CLAUDE_CODE_CUSTOM_OAUTH_URL` (a `-custom-oauth` infix on both
+the config file name and the service).
+
+Profile and isolate roots hang off the resolved config dir too, so
+`cli::ccswitch_home`/`isolate_home` take that directory, not `$HOME`.
+
+Claude Code NFC-normalizes the directory before hashing; we hash the bytes as
+given, which agrees for any already-NFC path. Documented, not fixed — NFC would
+mean a Unicode dependency.
 
 ---
 

@@ -1,6 +1,6 @@
 function ccswitch -d "switch between multiple Claude Code accounts"
     set -l home (__ccswitch_home)
-    set -l config "$HOME/.claude.json"
+    set -l config (__ccswitch_config_file)
 
     set -l cmd $argv[1]
     switch "$cmd"
@@ -41,41 +41,105 @@ function __ccswitch_home -d "resolve the profile store directory"
     if set -q CCSWITCH_HOME
         echo $CCSWITCH_HOME
     else
-        echo "$HOME/.claude/accounts"
+        echo (__ccswitch_claude_dir)"/accounts"
+    end
+end
+
+# Claude Code's state follows $CLAUDE_CONFIG_DIR: the config file, the
+# plaintext credential fallback, and — easy to miss — the *name of the Keychain
+# item*, which it namespaces with the first 8 hex chars of the directory's
+# SHA-256. Ignore the variable and you read another account's credential.
+# ccswitch isolate launches claude with CLAUDE_CONFIG_DIR set, so this matters
+# for any ccswitch run from inside an isolated session.
+function __ccswitch_claude_dir -d "Claude Code's config directory"
+    if set -q CLAUDE_CONFIG_DIR; and test -n "$CLAUDE_CONFIG_DIR"
+        echo "$CLAUDE_CONFIG_DIR"
+    else
+        echo "$HOME/.claude"
+    end
+end
+
+function __ccswitch_config_file -d "path of Claude Code's global .claude.json"
+    if set -q CLAUDE_CONFIG_DIR; and test -n "$CLAUDE_CONFIG_DIR"
+        echo "$CLAUDE_CONFIG_DIR/.claude.json"
+    else
+        echo "$HOME/.claude.json"
+    end
+end
+
+function __ccswitch_service -d "Keychain service name for the active config dir"
+    if set -q CLAUDE_CONFIG_DIR; and test -n "$CLAUDE_CONFIG_DIR"
+        set -l hash (printf '%s' "$CLAUDE_CONFIG_DIR" | shasum -a 256 | cut -c1-8)
+        echo "Claude Code-credentials-$hash"
+    else
+        echo "Claude Code-credentials"
     end
 end
 
 function __ccswitch_cred_read -d "print the current Claude Code OAuth credential blob"
-    switch (uname)
-        case Darwin
-            security find-generic-password -s "Claude Code-credentials" -w 2>/dev/null
-        case '*'
-            if test -f "$HOME/.claude/.credentials.json"
-                cat "$HOME/.claude/.credentials.json"
-            else
-                return 1
-            end
+    # Claude Code's macOS store is a composite: it reads the Keychain first and
+    # falls back to the plaintext file. Over SSH the login Keychain cannot be
+    # unlocked without a GUI prompt (security exits 36), so the file is where
+    # the credential actually lives — look there too, or we report a signed-in
+    # machine as signed out.
+    set -l file (__ccswitch_claude_dir)"/.credentials.json"
+    if test (uname) = Darwin
+        and security find-generic-password -s (__ccswitch_service) -w 2>/dev/null
+        return 0
+    end
+    if test -f "$file"
+        cat "$file"
+    else
+        return 1
     end
 end
 
 function __ccswitch_cred_acct -d "print the keychain account attribute (macOS only)"
-    security find-generic-password -s "Claude Code-credentials" -g 2>&1 \
+    security find-generic-password -s (__ccswitch_service) -g 2>&1 \
         | string replace -rf '^.*"acct"<blob>="(.*)"$' '$1'
 end
 
 function __ccswitch_cred_write -d "write an OAuth credential blob into the platform store"
     set -l blob $argv[1]
     set -l acct $argv[2]
-    switch (uname)
-        case Darwin
-            test -z "$acct"; and set acct "$USER"
-            security delete-generic-password -s "Claude Code-credentials" >/dev/null 2>&1
-            security add-generic-password -U -a "$acct" -s "Claude Code-credentials" -w "$blob"
-        case '*'
-            mkdir -p "$HOME/.claude"
-            printf '%s' "$blob" >"$HOME/.claude/.credentials.json"
-            chmod 600 "$HOME/.claude/.credentials.json"
+    set -l dir (__ccswitch_claude_dir)
+    set -l file "$dir/.credentials.json"
+    if test (uname) = Darwin
+        set -l svc (__ccswitch_service)
+        test -z "$acct"; and set acct "$USER"
+        # Claude Code substitutes a fixed name for anything outside this set,
+        # so we must too or we address a different item.
+        if not string match -qr '^[a-zA-Z0-9._-]+$' -- "$acct"
+            set acct claude-code-user
+        end
+        # An item is keyed by (service, account); adding under a new account
+        # attribute would leave a second one behind. Clear first.
+        security delete-generic-password -s "$svc" >/dev/null 2>&1
+        # Pass the token hex-encoded down stdin rather than on argv: argv is
+        # visible to every user on the box via `ps`. Claude Code does the same,
+        # dropping to argv only when the command outgrows the stdin limit.
+        set -l hex (printf '%s' "$blob" | xxd -p | tr -d '\n')
+        set -l script (printf 'add-generic-password -U -a "%s" -s "%s" -X "%s"' "$acct" "$svc" "$hex")
+        set -l ok 1
+        if test (string length -- "$script") -le 4031
+            printf '%s\n' "$script" | security -i 2>/dev/null; and set ok 0
+        else
+            security add-generic-password -U -a "$acct" -s "$svc" -X "$hex" 2>/dev/null; and set ok 0
+        end
+        if test $ok -eq 0
+            # The Keychain wins every read, so a leftover plaintext file is a
+            # stale credential waiting to be picked up the next time the
+            # Keychain is unreachable.
+            rm -f "$file"
+            return 0
+        end
+        # No usable Keychain (SSH / headless). Fall through to the plaintext
+        # file Claude Code itself falls back to; the item is already deleted,
+        # so no stale Keychain copy can shadow us from a GUI session.
     end
+    mkdir -p "$dir"
+    printf '%s' "$blob" >"$file"
+    chmod 600 "$file"
 end
 
 function __ccswitch_save -d "snapshot the current account into a profile"
@@ -299,7 +363,7 @@ function __ccswitch_isolate_home -d "resolve the isolated-profile base directory
     if set -q CCSWITCH_ISOLATE_HOME
         echo $CCSWITCH_ISOLATE_HOME
     else
-        echo "$HOME/.claude/profiles"
+        echo (__ccswitch_claude_dir)"/profiles"
     end
 end
 
@@ -383,7 +447,7 @@ function __ccswitch_seed -d "sync the shared isolate memory/history from ~/.clau
     set -l base (__ccswitch_isolate_home)
     set -l shared "$base/shared"
     set -l src $argv[1]
-    test -z "$src"; and set src "$HOME/.claude"
+    test -z "$src"; and set src (__ccswitch_claude_dir)
 
     if not test -d "$src"
         echo "ccswitch: source '$src' not found" >&2

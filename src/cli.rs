@@ -314,26 +314,15 @@ pub struct Paths {
 
 /// Resolve the profile-store root: `$CCSWITCH_HOME` or `~/.claude/accounts`.
 #[must_use]
-pub fn ccswitch_home(var: Option<String>, home: &Path) -> PathBuf {
-    non_empty(var).map_or_else(|| home.join(".claude").join("accounts"), PathBuf::from)
+pub fn ccswitch_home(var: Option<String>, claude_dir: &Path) -> PathBuf {
+    non_empty(var).map_or_else(|| claude_dir.join("accounts"), PathBuf::from)
 }
 
-/// Resolve the isolate base: `$CCSWITCH_ISOLATE_HOME` or `~/.claude/profiles`.
+/// Resolve the isolate base: `$CCSWITCH_ISOLATE_HOME`, else `profiles/` inside
+/// Claude Code's config directory (`~/.claude`, or `$CLAUDE_CONFIG_DIR`).
 #[must_use]
-pub fn isolate_home(var: Option<String>, home: &Path) -> PathBuf {
-    non_empty(var).map_or_else(|| home.join(".claude").join("profiles"), PathBuf::from)
-}
-
-/// The `~/.claude.json` config path for a home directory.
-#[must_use]
-pub fn config_path(home: &Path) -> PathBuf {
-    home.join(".claude.json")
-}
-
-/// The `~/.claude` directory for a home directory.
-#[must_use]
-pub fn claude_dir(home: &Path) -> PathBuf {
-    home.join(".claude")
+pub fn isolate_home(var: Option<String>, claude_dir: &Path) -> PathBuf {
+    non_empty(var).map_or_else(|| claude_dir.join("profiles"), PathBuf::from)
 }
 
 /// Treat an empty string the same as an unset variable.
@@ -1077,27 +1066,36 @@ mod tests {
     fn path_resolution_prefers_env_then_defaults() {
         let home = Path::new("/home/u");
         assert_eq!(
-            ccswitch_home(None, home),
+            ccswitch_home(None, &home.join(".claude")),
             PathBuf::from("/home/u/.claude/accounts")
         );
         assert_eq!(
-            ccswitch_home(Some(String::new()), home),
+            ccswitch_home(Some(String::new()), &home.join(".claude")),
             PathBuf::from("/home/u/.claude/accounts")
         );
         assert_eq!(
-            ccswitch_home(Some("/custom".to_string()), home),
+            ccswitch_home(Some("/custom".to_string()), &home.join(".claude")),
             PathBuf::from("/custom")
         );
         assert_eq!(
-            isolate_home(None, home),
+            isolate_home(None, &home.join(".claude")),
             PathBuf::from("/home/u/.claude/profiles")
         );
         assert_eq!(
-            isolate_home(Some("/iso".to_string()), home),
+            isolate_home(Some("/iso".to_string()), &home.join(".claude")),
             PathBuf::from("/iso")
         );
-        assert_eq!(config_path(home), PathBuf::from("/home/u/.claude.json"));
-        assert_eq!(claude_dir(home), PathBuf::from("/home/u/.claude"));
+        // Both defaults hang off Claude Code's config directory, so they
+        // follow $CLAUDE_CONFIG_DIR with it.
+        let moved = Path::new("/opt/claude-work");
+        assert_eq!(
+            ccswitch_home(None, moved),
+            PathBuf::from("/opt/claude-work/accounts")
+        );
+        assert_eq!(
+            isolate_home(None, moved),
+            PathBuf::from("/opt/claude-work/profiles")
+        );
     }
 
     #[test]

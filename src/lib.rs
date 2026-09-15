@@ -6,6 +6,7 @@
 //! while all decision logic lives in the plain modules and is unit-tested
 //! with fakes.
 
+pub mod claude_env;
 pub mod cli;
 pub mod cli_shim;
 pub mod config;
@@ -13,8 +14,10 @@ pub mod creds;
 pub mod creds_shim;
 pub mod error;
 pub mod model;
+pub mod sha256;
 pub mod store;
 pub mod switch;
 
+pub use claude_env::ClaudeEnv;
 pub use error::{Error, Result};
 pub use model::{Account, Profile};
