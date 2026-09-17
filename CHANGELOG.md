@@ -6,6 +6,10 @@ All notable changes to ccswitch are documented here. The format follows
 
 ## [Unreleased]
 
+_Nothing yet._
+
+## [0.1.4] — 2026-09-17
+
 ### Fixed
 
 - **Switching now works on headless and pure-SSH machines.** Claude Code's macOS
@@ -149,5 +153,9 @@ First release of the Rust CLI, superseding the original fish plugin (now under
 - Test suite covers decision logic to ≥98% line and region; OS/network I/O
   lives in `*_shim.rs` files behind traits (see `AGENTS.md`).
 
-[Unreleased]: https://github.com/mysqto/ccswitch/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/mysqto/ccswitch/compare/v0.1.4...HEAD
+[0.1.4]: https://github.com/mysqto/ccswitch/compare/v0.1.3...v0.1.4
+[0.1.3]: https://github.com/mysqto/ccswitch/compare/v0.1.2...v0.1.3
+[0.1.2]: https://github.com/mysqto/ccswitch/compare/v0.1.1...v0.1.2
+[0.1.1]: https://github.com/mysqto/ccswitch/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/mysqto/ccswitch/releases/tag/v0.1.0
